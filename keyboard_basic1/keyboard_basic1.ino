@@ -32,6 +32,9 @@ void sendTSCMD(uint8_t modifier, uint8_t firstKey, uint8_t secondKey) {
     payload[4] = firstKey;
     crc32_res = crc32.calc(payload, 5);
 
+    Serial.printf("sending %02x %02x", secondKey, firstKey);
+    Serial.println();
+
 
     obdFrame.identifier       = 0x710; // serial write;
     obdFrame.extd             = 0;
@@ -67,15 +70,27 @@ class MyEspUsbHost : public EspUsbHost {
       int modifier = 0;
       int firstKey = 0;
       int secondKey = 0;
+      for (i = 0;i<transfer->data_buffer_size;i++ ){
+        Serial.printf("%02x ", transfer->data_buffer[i]);
+      }
+      Serial.println();
 
       if (transfer->num_bytes > 4 && transfer->data_buffer_size > 4) { // sanity somewhat here
-        modifier = transfer->data_buffer[0];
-        firstKey = transfer->data_buffer[2];
-        secondKey = transfer->data_buffer[3];
+        modifier  = (transfer->data_buffer[0]);
+        firstKey  = (transfer->data_buffer[2]);
+        secondKey = (transfer->data_buffer[3]);
 
+         if (firstKey > 0) firstKey += (modifier * 0xff);
+         if (secondKey > 0) secondKey += (modifier * 0xff);
+
+
+        // bit of mojibake here
         if (firstKey > 0) {
-          sendTSCMD( modifier,  firstKey,  secondKey);
+          sendTSCMD( modifier,  firstKey & 0xff,  (firstKey >> 8) & 0xff);
+        } else if (secondKey > 0) {
+          sendTSCMD( modifier,  secondKey & 0xff,  (secondKey >> 8) & 0xff);
         }
+
       }
   }
 };
@@ -108,6 +123,11 @@ void loop() {
     Serial.print(ESP32Can.busErrCounter());
     Serial.println();
     tick = xTaskGetTickCount();
+  }
+
+  if (ESP32Can.busErrCounter() > 1) {
+    Serial.print(" busErrCounter - restarting esp");
+    ESP.restart();
   }
 
   usbHost.task();
