@@ -9,33 +9,38 @@ int gone = 1;
 
 #define CAN_TX 5
 #define CAN_RX 4
-
-
+unsigned long notWorking = 0;
+CanFrame rxobdFrame         = {0};
+CanFrame obdFrame         = {0};
 
 void sendTSCMD(uint8_t modifier, uint8_t firstKey, uint8_t secondKey) {
+  if (ESP32Can.canState() != 1) { 
+    Serial.println("Can isn't working ?");
+    notWorking++;
+    return;
+  }
     uint32_t crc32_res;
     uint8_t payload[5];
-    CanFrame obdFrame         = {0};
+//    CanFrame obdFrame         = {0};
     obdFrame.identifier       = 0x710; // serial write;
     obdFrame.extd             = 0;
     obdFrame.data_length_code = 3;
     obdFrame.data[0]          = 0x02; // length of message to follow
     obdFrame.data[1]          = 0x00;
     obdFrame.data[2]          = 0x05;
-    ESP32Can.writeFrame(obdFrame);
+  ESP32Can.writeFrame(obdFrame, 0);
 
  
     payload[0] = 0x5A;
     payload[1] = 0;
     payload[2] = 27;
-    payload[3] = secondKey;
-    payload[4] = firstKey;
+    payload[3] = secondKey & 0xff;
+    payload[4] = firstKey & 0xff;
     crc32_res = crc32.calc(payload, 5);
 
     Serial.printf("sending %02x %02x", secondKey, firstKey);
     Serial.println();
-
-
+  
     obdFrame.identifier       = 0x710; // serial write;
     obdFrame.extd             = 0;
     obdFrame.data_length_code = 6;
@@ -45,7 +50,7 @@ void sendTSCMD(uint8_t modifier, uint8_t firstKey, uint8_t secondKey) {
     obdFrame.data[3]          = payload[2]; // hardware button box 1 -> lookup on ECU side via lookup curve table thing; 
     obdFrame.data[4]          = payload[3]; // data 
     obdFrame.data[5]          = payload[4];  // data
-    ESP32Can.writeFrame(obdFrame);
+    ESP32Can.writeFrame(obdFrame, 0);
 
     obdFrame.identifier       = 0x710; // serial write;
     obdFrame.extd             = 0;
@@ -56,7 +61,7 @@ void sendTSCMD(uint8_t modifier, uint8_t firstKey, uint8_t secondKey) {
     obdFrame.data[3]          = (crc32_res >> 8)  & 0xff;  
     obdFrame.data[4]          = (crc32_res     )  & 0xff; // crc low bits
     
-    ESP32Can.writeFrame(obdFrame);
+    ESP32Can.writeFrame(obdFrame, 0);
 
 }
 
@@ -70,7 +75,7 @@ class MyEspUsbHost : public EspUsbHost {
       int modifier = 0;
       int firstKey = 0;
       int secondKey = 0;
-      for (i = 0;i<transfer->data_buffer_size;i++ ){
+      for (i = 0;i<transfer->data_buffer_size && i < 50;i++ ){
         Serial.printf("%02x ", transfer->data_buffer[i]);
       }
       Serial.println();
@@ -84,7 +89,7 @@ class MyEspUsbHost : public EspUsbHost {
          if (secondKey > 0) secondKey += (modifier * 0xff);
 
 
-        // bit of mojibake here
+        // return; // bit of mojibake here
         if (firstKey > 0) {
           sendTSCMD( modifier,  firstKey & 0xff,  (firstKey >> 8) & 0xff);
         } else if (secondKey > 0) {
@@ -109,26 +114,40 @@ gone = 0;
   usbHost.task();
 
   ESP32Can.setPins(CAN_TX, CAN_RX);
-  ESP32Can.setRxQueueSize(5);
-  ESP32Can.setTxQueueSize(5);
+  ESP32Can.setRxQueueSize(500);
+  ESP32Can.setTxQueueSize(500);
   ESP32Can.setSpeed(ESP32Can.convertSpeed(500));
   while(!ESP32Can.begin());
 }
 
 void loop() {
-  if (xTaskGetTickCount() - tick > 1000) {
-    Serial.print("canState: ");
-    Serial.print(ESP32Can.canState());
-    Serial.print(" busErrCounter:");
-    Serial.print(ESP32Can.busErrCounter());
-    Serial.println();
-    tick = xTaskGetTickCount();
-  }
+  if (ESP32Can.inRxQueue() > 0) {
+    ESP32Can.readFrame(rxobdFrame, 0);
 
-  if (ESP32Can.busErrCounter() > 1) {
+  }
+  if (xTaskGetTickCount() - tick > 1000) {
+    tick = xTaskGetTickCount();
+
+
+  Serial.printf("txq: %d, rxq: %d, rxerr: %d. txerr: %d, rxmis: %d, txmis: %d, buserr: %d, canstate: %d, notWorking: %d", 
+   ESP32Can.inTxQueue(),
+   ESP32Can.inRxQueue(),
+   ESP32Can.rxErrorCounter(),
+   ESP32Can.txErrorCounter(),
+   ESP32Can.rxMissedCounter(),
+   ESP32Can.txFailedCounter(),
+   ESP32Can.busErrCounter(),
+   ESP32Can.canState(), notWorking);
+    Serial.println();
+
+
+  if (notWorking > 10) {
     Serial.print(" busErrCounter - restarting esp");
     ESP.restart();
-  }
+  } 
+}
+
+
 
   usbHost.task();
 }
