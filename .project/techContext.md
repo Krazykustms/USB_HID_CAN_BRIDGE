@@ -152,3 +152,17 @@ arduino-cli upload -p COM3 --fqbn esp32:esp32:esp32s3 keyboard_basic1/
 7. Monitor CAN bus with analyzer (optional)
 8. Iterate on changes
 
+## User Documentation
+Comprehensive user-facing documentation available:
+- **README.md**: Complete installation and assembly guide
+  - Parts list with Amazon purchase links
+  - Hardware setup guide with 9 assembly photos
+  - Software installation steps for Arduino IDE
+  - Troubleshooting section
+  - Protocol specifications
+- **pics/** directory: Visual assembly guide showing:
+  - Buck converter preparation and installation
+  - CAN transceiver wiring and connections
+  - USB OTG bridge soldering
+  - Complete hardware assembly process
+

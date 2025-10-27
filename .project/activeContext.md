@@ -1,20 +1,26 @@
 # Active Context: USB_HID_CAN_BRIDGE
 
 ## Current Work Focus
-Project is in stable operational state. Memory bank has been established to document the existing codebase and architecture. The firmware is functional and handles USB keyboard to CAN bus bridging.
+Project is in stable operational state with comprehensive user-facing documentation completed. The firmware is functional and handles USB keyboard to CAN bus bridging. Recent focus has been on creating professional documentation to help users build and deploy the system.
 
 ## Recent Changes
-- Created complete memory bank documentation in `.project/` directory
-- Documented all 7 core memory bank files
-- Captured existing hardware configuration, software architecture, and operational details
-- No code changes - documentation of existing working system
+- Created comprehensive README.md for GitHub with full installation guide
+- Added "Parts Needed" section with direct Amazon purchase links for all components
+- Added "Hardware Setup Guide" with 9 step-by-step assembly photos from `pics/` directory
+- Documented buck converter preparation (trace cutting, voltage adjustment)
+- Documented CAN transceiver installation with visual guides
+- Documented USB OTG bridge soldering
+- README.md includes markdown tables, embedded images, and professional formatting
+- No firmware code changes - focus on documentation and user experience
 
 ## Next Steps
-- Monitor system operation for stability
-- Consider adding configuration options (CAN address, baud rate)
+- Monitor system operation for stability in field deployment
+- Gather user feedback on documentation clarity and completeness
+- Consider adding configuration options (CAN address, baud rate) if needed
 - Potential enhancement: Add support for keyboard LED feedback
 - Consider adding EEPROM storage for persistent configuration
 - Evaluate need for additional error diagnostics
+- Possible: Create video assembly guide to complement photo documentation
 
 ## Active Decisions and Considerations
 - **HID Locale**: Currently set to `HID_LOCAL_Japan_Katakana` - consider if this is optimal for target keyboards
@@ -35,4 +41,8 @@ Project is in stable operational state. Memory bank has been established to docu
 - CAN bus stability is critical - even brief issues can accumulate and require restart
 - The 0x711 address suggests integration with a specific ECU/control system expecting button box input
 - Japanese Katakana HID locale setting hints at potential Japanese market target or specific keyboard compatibility requirement
+- Buck converter trace cutting required for voltage adjustment - critical for proper 5V output
+- Visual documentation (photos) significantly improves user assembly experience
+- Direct purchase links reduce friction in parts procurement for builders
+- GitHub markdown with inline images provides professional presentation
 
