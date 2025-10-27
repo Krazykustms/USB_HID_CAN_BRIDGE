@@ -1,10 +1,18 @@
 #include <EspUsbHost.h>
 #include "EspUsbHost.h"
 #include <ESP32-TWAI-CAN.hpp>
+#include <Adafruit_NeoPixel.h>
+
+#define RGB_PIN 48       // WS2812 data pin
+#define NUMPIXELS 1      // Only one RGB LED on board
+
+Adafruit_NeoPixel pixels(NUMPIXELS, RGB_PIN, NEO_GRB + NEO_KHZ800);
+
 
 unsigned long tick = 0;
 unsigned long last_tick = 0;
 int gone = 1;
+int color = 0;
 
 #define CAN_TX 5
 #define CAN_RX 4
@@ -13,6 +21,8 @@ CanFrame rxobdFrame         = {0};
 CanFrame obdFrame         = {0};
 
 void sendCMD(uint8_t modifier, uint8_t firstKey, uint8_t secondKey) {
+  pixels.setPixelColor(0, pixels.Color(0, 0, 255));
+  pixels.show();
   int retry = 5;
   while (retry > 0) {
     if (ESP32Can.canState()) break;
@@ -70,6 +80,8 @@ class MyEspUsbHost : public EspUsbHost {
       int modifier = 0;
       int firstKey = 0;
       int secondKey = 0;
+      pixels.setPixelColor(0, pixels.Color(0, 255, 0));
+      pixels.show();
       for (i = 0;i<transfer->data_buffer_size && i < 50;i++ ){
         Serial.printf("%02x ", transfer->data_buffer[i]);
       }
@@ -99,6 +111,8 @@ MyEspUsbHost usbHost;
 
 void setup() {
   Serial.begin(115200);
+  pixels.begin();       // Initialize the NeoPixel library
+  pixels.setBrightness(50); // Optional: 0–255 brightness
 //  delay(500);
   int i;
   tick = xTaskGetTickCount();
@@ -141,5 +155,6 @@ void loop() {
   } 
 }
   usbHost.task();
+
 }
 
