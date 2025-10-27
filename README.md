@@ -39,6 +39,72 @@ Ready to build? Here are the specific components needed for this project:
 - 12V power supply for CAN transceiver (if required by your transceiver)
 - CAN bus network with 120Ω termination resistors at both ends
 
+## Hardware Setup Guide
+
+Follow these steps to assemble the hardware. Images show the actual build process:
+
+### Step 1: Prepare the Buck Converter (Optional Power Supply)
+
+If using a buck converter to step down 12V to 5V for the ESP32-S3:
+
+**Cut the trace on the buck converter to enable voltage adjustment:**
+
+![Buck converter trace cut location](pics/buck-cut-trace-here.png)
+
+**Adjust the buck converter output to 5V and bridge the connection:**
+
+![Buck converter adjusted and bridged for 5V output](pics/buck-adj-cut-5v-bridged.png)
+
+**Align the buck converter with the development board pins:**
+
+![Buck converter aligned with dev board](pics/buck-align-with-dev-board.png)
+
+**Install the buck converter on the development board:**
+
+![Buck converter installed on dev board pins](pics/dev-board-pins-for-buck-installed.png)
+
+### Step 2: Install the CAN Transceiver Module
+
+**Identify the GPIO pins for CAN PHY connection (GPIO 4 and 5):**
+
+![Development board pins for CAN PHY connection](pics/dev-board-pins-for-can-phy.png)
+
+**Install the CAN transceiver module:**
+
+![CAN PHY module installed](pics/can-phy-installed.png)
+
+**Connect power to the CAN transceiver:**
+
+![CAN PHY power connections](pics/can-phy-power-hooked-up.png)
+
+**Connect CAN-H and CAN-L wires to the transceiver:**
+
+![CAN PHY with CAN bus wires connected](pics/can-phy-installed-with-can-wires.png)
+
+### Step 3: Prepare the USB OTG Bridge (if needed)
+
+**Solder the USB OTG bridge connections:**
+
+![USB OTG bridge soldered](pics/usb-otg-bridge-soldered.png)
+
+### Wiring Summary
+
+After following the above steps, your connections should be:
+
+**ESP32-S3-USB-OTG to CAN Transceiver:**
+- GPIO 5 (CAN_TX) → CAN Transceiver RX pin
+- GPIO 4 (CAN_RX) → CAN Transceiver TX pin
+- 3.3V → CAN Transceiver VCC
+- GND → CAN Transceiver GND
+
+**CAN Transceiver to CAN Bus:**
+- CANH → CAN Bus H line
+- CANL → CAN Bus L line
+
+**Power Supply:**
+- 5V power to ESP32-S3 (via USB-C or buck converter)
+- 12V to buck converter (if using external power)
+
 ## Software Prerequisites
 
 1. Arduino IDE (latest version)
