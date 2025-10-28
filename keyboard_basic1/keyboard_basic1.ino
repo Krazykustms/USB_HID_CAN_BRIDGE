@@ -1,12 +1,10 @@
 #include <EspUsbHost.h>
-#include "EspUsbHost.h"
 #include <ESP32-TWAI-CAN.hpp>
-#include <Adafruit_NeoPixel.h>
 
 #define RGB_PIN 48       // WS2812 data pin
-#define NUMPIXELS 1      // Only one RGB LED on board
+#define TS_HW_BUTTONBOX1_CATEGORY 27 // hardware button box 1 -> lookup on ECU side via lookup curve table thing; 
+#define CANBUS_BUTTONBOX_ADDRESS 0x711 // CANBUS BUTTONBOX
 
-Adafruit_NeoPixel pixels(NUMPIXELS, RGB_PIN, NEO_GRB + NEO_KHZ800);
 
 
 unsigned long tick = 0;
@@ -21,8 +19,6 @@ CanFrame rxobdFrame         = {0};
 CanFrame obdFrame         = {0};
 
 void sendCMD(uint8_t modifier, uint8_t firstKey, uint8_t secondKey) {
-  pixels.setPixelColor(0, pixels.Color(0, 0, 255));
-  pixels.show();
   int retry = 5;
   while (retry > 0) {
     if (ESP32Can.canState()) break;
@@ -39,19 +35,27 @@ void sendCMD(uint8_t modifier, uint8_t firstKey, uint8_t secondKey) {
 
     uint32_t crc32_res;
     uint8_t payload[5];
+
+    /* This is from the ECU side of grabbing and using this data.
+       This is here for reference only.
+      if (frame.data8[0] == 0x5a && frame.data8[1] == 0 && frame.data8[2] == 27 ) {
+      	button = frame.data8[3] << 8 | frame.data8[4];
+     	  handleButtonBox(hwButtonBox1Lookup(button));
+    }
+  */
  
-    payload[0] = 0x5A;
-    payload[1] = 0;
-    payload[2] = 27;
-    payload[3] = secondKey & 0xff;
-    payload[4] = firstKey & 0xff;
+    payload[0] = 0x5A; // magic byte "Z" in hex - used to be "test buttons" marker
+    payload[1] = 0; // reserved
+    payload[2] = TS_HW_BUTTONBOX1_CATEGORY; // hardware button box 1 -> lookup on ECU side via lookup curve table thing;  27 decimal = 0x1B hex
+    payload[3] = secondKey & 0xff; // data
+    payload[4] = firstKey & 0xff; // data
 
     Serial.printf("sending %02x %02x", secondKey, firstKey);
     Serial.println();
   
-    obdFrame.identifier       = 0x711; // CANBUS BUTTONBOX
-    obdFrame.extd             = 0;
-    obdFrame.data_length_code = 5;
+    obdFrame.identifier       = CANBUS_BUTTONBOX_ADDRESS; // CANBUS BUTTONBOX address = 0x711 
+    obdFrame.extd             = 0; // standard frame
+    obdFrame.data_length_code = 5; // data length code 5 bytes
     obdFrame.data[0]          = payload[0]; // Z - test buttons
     obdFrame.data[1]          = payload[1];    // TS_BUTTONBOX1_CATEGORY = 26, 0x00 0x1A
     obdFrame.data[2]          = payload[2]; // hardware button box 1 -> lookup on ECU side via lookup curve table thing; 
@@ -76,12 +80,11 @@ class MyEspUsbHost : public EspUsbHost {
     Serial.println("device gone");
   };
   void onReceive(const usb_transfer_t *transfer){
+      if (!transfer->data_buffer) return;
       int i=0;
       int modifier = 0;
       int firstKey = 0;
       int secondKey = 0;
-      pixels.setPixelColor(0, pixels.Color(0, 255, 0));
-      pixels.show();
       for (i = 0;i<transfer->data_buffer_size && i < 50;i++ ){
         Serial.printf("%02x ", transfer->data_buffer[i]);
       }
@@ -111,8 +114,6 @@ MyEspUsbHost usbHost;
 
 void setup() {
   Serial.begin(115200);
-  pixels.begin();       // Initialize the NeoPixel library
-  pixels.setBrightness(50); // Optional: 0–255 brightness
 //  delay(500);
   int i;
   tick = xTaskGetTickCount();
