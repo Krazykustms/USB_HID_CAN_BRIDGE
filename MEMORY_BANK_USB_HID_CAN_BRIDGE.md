@@ -5,8 +5,9 @@ USB_HID_CAN_BRIDGE is an ESP32-S3 USB OTG project that bridges USB keyboard inpu
 
 ## Hardware Requirements
 - ESP32-S3-USB-OTG board
-- CAN bus PHY connected to TX pin 5, RX pin 4
-- 12V to 5V adapter
+- CAN bus PHY (TJA1050/MCP2551) connected to TX pin 5, RX pin 4
+- **CRITICAL: CAN transceiver requires 5V power** (not 3.3V)
+- 12V to 5V buck converter (provides power to ESP32 and CAN transceiver)
 - CAN-H and CAN-L connections
 - WS2812 RGB LED on pin 48
 
@@ -74,8 +75,10 @@ USB_HID_CAN_BRIDGE is an ESP32-S3 USB OTG project that bridges USB keyboard inpu
 - Queue management: 500 deep for both RX/TX
 
 ## Pin Connections
-- CAN_TX: GPIO 5
-- CAN_RX: GPIO 4
+- CAN_TX: GPIO 5 → CAN transceiver RX pin
+- CAN_RX: GPIO 4 → CAN transceiver TX pin
+- CAN transceiver VCC: **5V** (CRITICAL - TJA1050/MCP2551 require 5V, not 3.3V)
+- CAN transceiver GND: GND
 - WS2812: GPIO 48 (data pin)
 
 ## Serial Configuration
@@ -85,4 +88,19 @@ USB_HID_CAN_BRIDGE is an ESP32-S3 USB OTG project that bridges USB keyboard inpu
 
 ## HID Local Configuration
 - Set to HID_LOCAL_Japan_Katakana for keyboard layout compatibility
+
+## Common Issues & Solutions
+
+### CAN Transceiver Power Requirement (CRITICAL)
+**Problem**: TJA1050 and MCP2551 transceivers require 5V supply voltage
+- **Symptom**: System restarts repeatedly, `notWorking` and `busErrCounter` increase
+- **Root Cause**: CAN transceiver powered with 3.3V instead of 5V
+- **Solution**: Connect transceiver VCC to 5V (from buck converter or ESP32 5V pin)
+- **Note**: Logic pins (TX/RX) are 3.3V tolerant - only VCC needs 5V
+
+### CAN Bus Acknowledgment Requirement
+**Problem**: At least one other device must be on CAN bus to ACK messages
+- **Symptom**: Transmission errors when no other device connected
+- **Solution**: Connect to target ECU (epicEFI) or use CAN analyzer during testing
+- **Note**: Acknowledgment is automatic at hardware level - no software ACK needed
 

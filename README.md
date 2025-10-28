@@ -33,11 +33,13 @@ Ready to build? Here are the specific components needed for this project:
 ## Hardware Requirements
 
 - ESP32-S3-USB-OTG development board (official Espressif board)
-- CAN transceiver module (SN65HVD230 or MCP2551)
+- CAN transceiver module (TJA1050 or MCP2551 - requires 5V; or SN65HVD230 - works with 3.3V)
 - USB keyboard (standard HID protocol)
 - 5V power supply for ESP32-S3
-- 12V power supply for CAN transceiver (if required by your transceiver)
+- **5V power source for CAN transceiver** (TJA1050/MCP2551 require 5V - use buck converter from 12V or ESP32 5V pin)
 - CAN bus network with 120Ω termination resistors at both ends
+
+> **⚠️ Common Issue:** TJA1050 and MCP2551 transceivers **require 5V**, not 3.3V. Without proper voltage, the transceiver cannot drive the CAN bus, causing transmission failures and system restarts.
 
 ## Hardware Setup Guide
 
@@ -94,8 +96,10 @@ After following the above steps, your connections should be:
 **ESP32-S3-USB-OTG to CAN Transceiver:**
 - GPIO 5 (CAN_TX) → CAN Transceiver RX pin
 - GPIO 4 (CAN_RX) → CAN Transceiver TX pin
-- 3.3V → CAN Transceiver VCC
+- **5V → CAN Transceiver VCC** (CRITICAL: TJA1050/MCP2551 require 5V, not 3.3V)
 - GND → CAN Transceiver GND
+
+> **⚠️ IMPORTANT:** TJA1050 and MCP2551 transceivers require 5V power supply. Using 3.3V will cause the transceiver to fail, resulting in no CAN messages being transmitted and eventual system restart due to ACK timeout errors. The logic pins (TX/RX) are 3.3V tolerant.
 
 **CAN Transceiver to CAN Bus:**
 - CANH → CAN Bus H line
@@ -159,13 +163,15 @@ Download and install Arduino IDE from https://www.arduino.cc/en/software
 - GPIO 48 → WS2812 LED (already onboard)
 - 5V/GND → Power supply
 
-**CAN Transceiver Wiring (SN65HVD230 or MCP2551):**
-- VCC (3.3V) → ESP32 3.3V pin
+**CAN Transceiver Wiring (TJA1050, MCP2551, or SN65HVD230):**
+- **VCC → 5V power source** (from buck converter or ESP32 5V pin if available)
 - GND → ESP32 GND pin
 - TX → ESP32 GPIO 4 (CAN_RX)
 - RX → ESP32 GPIO 5 (CAN_TX)
 - CANH → CAN Bus H line
 - CANL → CAN Bus L line
+
+> **⚠️ CRITICAL:** TJA1050 and MCP2551 require **5V supply voltage**. SN65HVD230 can work with 3.3V. Check your specific transceiver datasheet. Using incorrect voltage will prevent CAN communication.
 
 **CAN Bus Network:**
 - Install 120Ω termination resistor between CAN-H and CAN-L at each end of bus
@@ -230,13 +236,17 @@ The system operates automatically once powered on:
 - Check serial output for enumeration messages
 
 ### Problem: No CAN messages transmitted
+- **⚠️ MOST COMMON:** Verify CAN transceiver has **5V power** (TJA1050/MCP2551 require 5V, not 3.3V)
 - Verify CAN transceiver connections (TX/RX pins)
 - Check CAN bus termination (120Ω resistors)
+- Ensure at least one other device is on the CAN bus to ACK messages
 - Monitor serial output for error messages
 - Verify CAN bus voltage levels (2.5V idle, differential when active)
 
 ### Problem: System keeps restarting
 - CAN bus error threshold exceeded (>30 errors)
+- **⚠️ CHECK FIRST:** Verify CAN transceiver has **5V power** (not 3.3V)
+- **CHECK SECOND:** Ensure another device is on the CAN bus to acknowledge messages
 - Check CAN bus wiring and termination
 - Verify other CAN devices are operating correctly
 - Check power supply stability

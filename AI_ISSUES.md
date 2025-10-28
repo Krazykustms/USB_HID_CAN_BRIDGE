@@ -2,7 +2,37 @@
 
 Analysis Date: 2025-10-28
 
-## Critical Issues (Fix First)
+## Critical Hardware Issue (RESOLVED)
+
+### Issue #0: CAN Transceiver Power Requirement
+**Location**: Hardware wiring  
+**Severity**: CRITICAL (system won't work)
+**Status**: RESOLVED - Documentation updated
+
+**Problem**: TJA1050 and MCP2551 CAN transceivers require **5V supply voltage**, not 3.3V. This was documented incorrectly in earlier versions.
+
+**Symptoms when using 3.3V**:
+- CAN messages not transmitted onto physical bus
+- No ACKs received (messages never reach other devices)
+- `notWorking` counter increases rapidly
+- `busErrCounter` increases
+- System restarts after 30 errors
+
+**Root Cause**: 
+- TJA1050/MCP2551 require 4.75V - 5.25V on VCC pin
+- 3.3V is insufficient to power the transceiver's output drivers
+- Logic pins (TX/RX) are 3.3V tolerant, but VCC must be 5V
+
+**Solution**:
+- Connect CAN transceiver VCC to 5V (from buck converter or ESP32 5V pin)
+- Keep logic pins (TX/RX) connected to ESP32 3.3V GPIO pins
+- This is now correctly documented in README.md and memory bank
+
+**Note**: SN65HVD230 CAN transceiver CAN work with 3.3V, but TJA1050/MCP2551 cannot.
+
+---
+
+## Critical Software Issues (Fix First)
 
 ### Issue #1: Duplicate Include Statement
 **Location**: Lines 1-2  
@@ -374,29 +404,37 @@ if (transfer->num_bytes >= HID_KEYBOARD_REPORT_SIZE &&
 
 ## Summary
 
-**Critical Issues**: 5 (Issues #1-5)  
+**Critical Hardware Issues**: 1 (Issue #0 - RESOLVED)  
+**Critical Software Issues**: 5 (Issues #1-5)  
 **Medium Priority**: 7 (Issues #6, #8-9, #12, #14)  
 **Low Priority**: 2 (Issues #7, #10-11, #13)  
 
 **Recommended Fix Order**:
-1. Issue #2 - Key encoding (breaks modifier keys)
-2. Issue #3 - Function signature (related to #2)
-3. Issue #5 - Infinite loop (system hang)
-4. Issue #4 - Buffer validation (crash prevention)
-5. Issue #1 - Duplicate include (easy fix)
-6. Issue #6 - Magic numbers (maintainability)
-7. Issue #9 - USB state management (correctness)
-8. Issue #12 - Watchdog timer (reliability)
-9. Remaining issues as time permits
+1. ~~Issue #0 - CAN transceiver 5V power (RESOLVED - docs updated)~~
+2. Issue #2 - Key encoding (breaks modifier keys)
+3. Issue #3 - Function signature (related to #2)
+4. Issue #5 - Infinite loop (system hang)
+5. Issue #4 - Buffer validation (crash prevention)
+6. Issue #1 - Duplicate include (easy fix)
+7. Issue #6 - Magic numbers (maintainability)
+8. Issue #9 - USB state management (correctness)
+9. Issue #12 - Watchdog timer (reliability)
+10. Remaining issues as time permits
 
 ---
 
 ## Testing Recommendations
 
-After fixes, test:
-1. Modifier keys (Shift+A, Ctrl+C, etc.) - validates Issue #2 fix
-2. CAN initialization failure (disconnect CAN transceiver) - validates Issue #5 fix
-3. USB device connect/disconnect cycles - validates Issue #9 fix
-4. Rapid key presses - validates buffer handling
-5. Extended runtime - validates watchdog and error handling
+**Prerequisites**:
+- ✓ CAN transceiver powered with 5V (not 3.3V)
+- ✓ At least one other device on CAN bus (epicEFI ECU or CAN analyzer)
+- ✓ Proper 120Ω termination on CAN bus
+
+**After fixes, test**:
+1. Hardware power - Verify 5V at CAN transceiver VCC pin
+2. Modifier keys (Shift+A, Ctrl+C, etc.) - validates Issue #2 fix
+3. CAN initialization failure (disconnect CAN transceiver) - validates Issue #5 fix
+4. USB device connect/disconnect cycles - validates Issue #9 fix
+5. Rapid key presses - validates buffer handling
+6. Extended runtime - validates watchdog and error handling
 
