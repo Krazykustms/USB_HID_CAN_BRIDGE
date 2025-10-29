@@ -2,8 +2,6 @@
 #include <EspUsbHost.h>
 #include <Adafruit_NeoPixel.h>
 #include "esp_task_wdt.h"
-
-// ESP32-TWAI-CAN library headers (as used in prior codebase)
 #include <ESP32-TWAI-CAN.hpp>
 
 // ------------------------------
@@ -48,13 +46,17 @@ static const uint8_t BUTTON_HID_CODES[BUTTON_COUNT] = {
   0x1f, // BTN1 -> '2'
   0x20, // BTN2 -> '3'
   0x21, // BTN3 -> '4'
-  0x22, // BTN4 -> '5'
+  0x04, // BTN4 -> 'A'
   0x23, // BTN5 -> '6'
   0x24, // BTN6 -> '7'
   0x25  // BTN7 -> '8'
 };
 // Debounce settings
 #define DEBOUNCE_MS                25
+
+// Long-press configuration
+#define LONG_PRESS_BUTTON_INDEX     4   // Index in BUTTON_PINS / BUTTON_HID_CODES (GPIO 10)
+#define LONG_PRESS_MS               5000
 
 // ------------------------------
 // Globals
@@ -76,6 +78,8 @@ typedef struct {
   uint8_t lastReadLevel;    // last raw read
   uint32_t lastChangeMs;    // last time raw changed
   uint8_t pressed;          // edge-detected pressed flag (cleared after handled)
+  uint32_t holdStartMs;     // when LOW became stable (for long press)
+  uint8_t longFired;        // prevent repeat firing on long press
 } ButtonState;
 
 static ButtonState buttonStates[BUTTON_COUNT];
@@ -109,8 +113,10 @@ static inline void ledRed() {
 // ------------------------------
 
 static bool beginCanWithRetry() {
-  ESP32Can.setPins(CAN_RX_PIN, CAN_TX_PIN);
-  ESP32Can.setSpeed(CAN_SPEED_KBPS * 1000);
+  // TwaiCAN::setPins expects (txPin, rxPin)
+  ESP32Can.setPins(CAN_TX_PIN, CAN_RX_PIN);
+  // Library expects TwaiSpeed enum; convert numeric kbps to enum
+  ESP32Can.setSpeed(ESP32Can.convertSpeed(CAN_SPEED_KBPS));
 
   int retries = CAN_INIT_MAX_RETRIES;
   while (!ESP32Can.begin() && retries > 0) {
@@ -146,7 +152,7 @@ static bool sendCMD(uint8_t keyLSB, uint8_t keyMSB) {
   int attempts = CAN_MAX_RETRIES;
   while (attempts-- > 0) {
     ledBlue();
-    bool queued = ESP32Can.writeFrame(frame, 0 /* non-blocking */);
+    bool queued = ESP32Can.writeFrame(frame, 5 /* small timeout to allow queue */);
     if (queued) {
       ledOff();
       return true;
@@ -171,10 +177,6 @@ static bool sendCMD(uint8_t keyLSB, uint8_t keyMSB) {
 class MyEspUsbHost : public EspUsbHost {
 public:
   void onReceive(const usb_transfer_t *transfer) override {
-    if (deviceGone) {
-      Serial.println("Ignoring data from disconnected device");
-      return;
-    }
     if (!transfer || !transfer->data_buffer) {
       Serial.println("Invalid transfer buffer");
       return;
@@ -245,7 +247,17 @@ void setup() {
   ledOff();
 
   // Watchdog
-  esp_task_wdt_init(WDT_TIMEOUT_SECONDS, true);
+  const esp_task_wdt_config_t wdt_cfg = {
+    .timeout_ms = WDT_TIMEOUT_SECONDS * 1000,
+    .idle_core_mask = (1 << portNUM_PROCESSORS) - 1,
+    .trigger_panic = true
+  };
+  esp_err_t wdt_status = esp_task_wdt_status(NULL);
+  if (wdt_status == ESP_ERR_INVALID_STATE) {
+    esp_task_wdt_init(&wdt_cfg);
+  } else {
+    esp_task_wdt_reconfigure(&wdt_cfg);
+  }
   esp_task_wdt_add(NULL);
 
   // Initialize CAN
@@ -302,8 +314,25 @@ void loop() {
         buttonStates[i].stableLevel = raw;
         // Detect press edge: HIGH->LOW (with pullup)
         if (prev == HIGH && raw == LOW) {
-          buttonStates[i].pressed = 1;
+          if (i == LONG_PRESS_BUTTON_INDEX) {
+            // For the long-press button, arm the hold timer and do not trigger yet
+            buttonStates[i].holdStartMs = nowMs;
+            buttonStates[i].longFired = 0;
+          } else {
+            buttonStates[i].pressed = 1;
+          }
         }
+        // Detect release edge: LOW->HIGH, reset long-press state
+        if (prev == LOW && raw == HIGH) {
+          buttonStates[i].longFired = 0;
+        }
+      }
+    }
+    // While held LOW, check for long-press timeout on the designated button
+    if (i == LONG_PRESS_BUTTON_INDEX && buttonStates[i].stableLevel == LOW) {
+      if (!buttonStates[i].longFired && (nowMs - buttonStates[i].holdStartMs) >= LONG_PRESS_MS) {
+        buttonStates[i].pressed = 1;
+        buttonStates[i].longFired = 1;
       }
     }
     if (buttonStates[i].pressed) {
@@ -311,8 +340,12 @@ void loop() {
       // Send CAN message representing this button as a key press (no modifiers)
       uint8_t key = BUTTON_HID_CODES[i];
       uint16_t encoded = (uint16_t)key; // modifier = 0, so MSB=0
+      Serial.printf("Button GPIO %d pressed -> HID 0x%02X\n", BUTTON_PINS[i], key);
       ledGreen();
-      (void)sendCMD((uint8_t)(encoded & 0xFF), (uint8_t)((encoded >> 8) & 0xFF));
+      bool sent = sendCMD((uint8_t)(encoded & 0xFF), (uint8_t)((encoded >> 8) & 0xFF));
+      if (!sent) {
+        Serial.println("WARN: CAN send not queued");
+      }
       ledOff();
     }
   }
