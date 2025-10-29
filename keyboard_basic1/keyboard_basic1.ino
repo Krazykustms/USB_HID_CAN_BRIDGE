@@ -1,161 +1,321 @@
+#include <Arduino.h>
 #include <EspUsbHost.h>
+#include <Adafruit_NeoPixel.h>
+#include "esp_task_wdt.h"
+
+// ESP32-TWAI-CAN library headers (as used in prior codebase)
 #include <ESP32-TWAI-CAN.hpp>
 
-#define RGB_PIN 48       // WS2812 data pin
-#define TS_HW_BUTTONBOX1_CATEGORY 27 // hardware button box 1 -> lookup on ECU side via lookup curve table thing; 
-#define CANBUS_BUTTONBOX_ADDRESS 0x711 // CANBUS BUTTONBOX
+// ------------------------------
+// Configuration Constants
+// ------------------------------
 
+// GPIO pins
+#define CAN_TX_PIN                 5
+#define CAN_RX_PIN                 4
+#define LED_NEOPIXEL_PIN           48
 
+// CAN protocol constants
+#define CAN_ADDRESS_BUTTONBOX      0x711
+#define CAN_MAGIC_BYTE             0x5A
+#define CAN_BUTTON_BOX_ID          27
+#define CAN_SPEED_KBPS             500
 
-unsigned long tick = 0;
-unsigned long last_tick = 0;
-int gone = 1;
-int color = 0;
+// Timing and retries
+#define CAN_RETRY_DELAY_MS         13
+#define CAN_MAX_RETRIES            5
+#define CAN_INIT_MAX_RETRIES       10
+#define ERROR_THRESHOLD            30
 
-#define CAN_TX 5
-#define CAN_RX 4
-unsigned long notWorking = 0;
-CanFrame rxobdFrame         = {0};
-CanFrame obdFrame         = {0};
+// HID constants
+#define HID_KEYBOARD_REPORT_SIZE   8
 
-void sendCMD(uint8_t modifier, uint8_t firstKey, uint8_t secondKey) {
-  int retry = 5;
-  while (retry > 0) {
-    if (ESP32Can.canState()) break;
-    delay(13);
-    Serial.println("retry");
-    retry--;
-  }
+// LED behavior
+#define LED_NUM_PIXELS             1
 
-  if (ESP32Can.canState() != 1) { 
-    Serial.println("Can isn't working ?");
-    notWorking++;
-    return;
-  }
+// Watchdog
+#define WDT_TIMEOUT_SECONDS        10
 
-    uint32_t crc32_res;
-    uint8_t payload[5];
+// GPIO Buttons
+#define BUTTON_COUNT               8
+// Choose safe, free GPIOs on ESP32-S3-USB-OTG. Wired: button -> GPIO, other side -> GND
+// Using internal pullups (active-low)
+static const int BUTTON_PINS[BUTTON_COUNT] = { 6, 7, 8, 9, 10, 11, 12, 13 };
+// Map each button to a HID keycode (USB usage IDs)
+// Examples: 0x04='a', 0x05='b', ... 0x1e='1', 0x1f='2', etc.
+static const uint8_t BUTTON_HID_CODES[BUTTON_COUNT] = {
+  0x1e, // BTN0 -> '1'
+  0x1f, // BTN1 -> '2'
+  0x20, // BTN2 -> '3'
+  0x21, // BTN3 -> '4'
+  0x22, // BTN4 -> '5'
+  0x23, // BTN5 -> '6'
+  0x24, // BTN6 -> '7'
+  0x25  // BTN7 -> '8'
+};
+// Debounce settings
+#define DEBOUNCE_MS                25
 
-    /* This is from the ECU side of grabbing and using this data.
-       This is here for reference only.
-      if (frame.data8[0] == 0x5a && frame.data8[1] == 0 && frame.data8[2] == 27 ) {
-      	button = frame.data8[3] << 8 | frame.data8[4];
-     	  handleButtonBox(hwButtonBox1Lookup(button));
-    }
-  */
- 
-    payload[0] = 0x5A; // magic byte "Z" in hex - used to be "test buttons" marker
-    payload[1] = 0; // reserved
-    payload[2] = TS_HW_BUTTONBOX1_CATEGORY; // hardware button box 1 -> lookup on ECU side via lookup curve table thing;  27 decimal = 0x1B hex
-    payload[3] = secondKey & 0xff; // data
-    payload[4] = firstKey & 0xff; // data
+// ------------------------------
+// Globals
+// ------------------------------
 
-    Serial.printf("sending %02x %02x", secondKey, firstKey);
-    Serial.println();
-  
-    obdFrame.identifier       = CANBUS_BUTTONBOX_ADDRESS; // CANBUS BUTTONBOX address = 0x711 
-    obdFrame.extd             = 0; // standard frame
-    obdFrame.data_length_code = 5; // data length code 5 bytes
-    obdFrame.data[0]          = payload[0]; // Z - test buttons
-    obdFrame.data[1]          = payload[1];    // TS_BUTTONBOX1_CATEGORY = 26, 0x00 0x1A
-    obdFrame.data[2]          = payload[2]; // hardware button box 1 -> lookup on ECU side via lookup curve table thing; 
-    obdFrame.data[3]          = payload[3]; // data 
-    obdFrame.data[4]          = payload[4];  // data
+Adafruit_NeoPixel pixels(LED_NUM_PIXELS, LED_NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
-    retry=5;
-    while (retry > 0) {
-      if (ESP32Can.writeFrame(obdFrame, 5)) break;
-      Serial.println("retry");
-      retry--;
-    }
+// CAN driver objects
+// Library exposes singleton ESP32Can and struct CanFrame
+// Queue sizes are configured in the library; use defaults unless changed elsewhere
 
-    while (ESP32Can.inRxQueue() > 0) {
-      ESP32Can.readFrame(rxobdFrame, 1);
-    }
+// USB host handling
+static volatile int deviceGone = 1;  // 1 = no device connected
+
+static volatile uint32_t canErrorCount = 0;
+
+typedef struct {
+  uint8_t stableLevel;      // last stable level (HIGH with pullup = not pressed)
+  uint8_t lastReadLevel;    // last raw read
+  uint32_t lastChangeMs;    // last time raw changed
+  uint8_t pressed;          // edge-detected pressed flag (cleared after handled)
+} ButtonState;
+
+static ButtonState buttonStates[BUTTON_COUNT];
+
+// ------------------------------
+// Utility: LED helpers
+// ------------------------------
+
+static inline void ledOff() {
+  pixels.setPixelColor(0, pixels.Color(0, 0, 0));
+  pixels.show();
 }
 
+static inline void ledBlue() {
+  pixels.setPixelColor(0, pixels.Color(0, 0, 255));
+  pixels.show();
+}
+
+static inline void ledGreen() {
+  pixels.setPixelColor(0, pixels.Color(0, 255, 0));
+  pixels.show();
+}
+
+static inline void ledRed() {
+  pixels.setPixelColor(0, pixels.Color(255, 0, 0));
+  pixels.show();
+}
+
+// ------------------------------
+// CAN helpers
+// ------------------------------
+
+static bool beginCanWithRetry() {
+  ESP32Can.setPins(CAN_RX_PIN, CAN_TX_PIN);
+  ESP32Can.setSpeed(CAN_SPEED_KBPS * 1000);
+
+  int retries = CAN_INIT_MAX_RETRIES;
+  while (!ESP32Can.begin() && retries > 0) {
+    Serial.println("CAN init failed, retrying...");
+    ledRed();
+    delay(500);
+    retries--;
+  }
+  if (retries == 0) {
+    Serial.println("FATAL: CAN initialization failed");
+    ledRed();
+    return false;
+  }
+  return true;
+}
+
+static bool sendCMD(uint8_t keyLSB, uint8_t keyMSB) {
+  // Payload format (5 bytes):
+  // [0] 0x5A, [1] 0x00, [2] 27, [3] keyMSB (modifier), [4] keyLSB (keycode)
+  uint8_t payload[5];
+  payload[0] = CAN_MAGIC_BYTE;
+  payload[1] = 0x00;
+  payload[2] = CAN_BUTTON_BOX_ID;
+  payload[3] = keyMSB;
+  payload[4] = keyLSB;
+
+  CanFrame frame = {0};
+  frame.identifier = CAN_ADDRESS_BUTTONBOX;
+  frame.extd = 0;  // Standard frame
+  frame.data_length_code = 5;
+  memcpy(frame.data, payload, 5);
+
+  int attempts = CAN_MAX_RETRIES;
+  while (attempts-- > 0) {
+    ledBlue();
+    bool queued = ESP32Can.writeFrame(frame, 0 /* non-blocking */);
+    if (queued) {
+      ledOff();
+      return true;
+    }
+    delay(CAN_RETRY_DELAY_MS);
+  }
+
+  // Track error
+  canErrorCount++;
+  if (canErrorCount > ERROR_THRESHOLD) {
+    Serial.println("Too many CAN errors, restarting...");
+    ESP.restart();
+  }
+  ledOff();
+  return false;
+}
+
+// ------------------------------
+// USB Host handling
+// ------------------------------
+
 class MyEspUsbHost : public EspUsbHost {
-  void onGone(const usb_host_client_event_msg_t *eventMsg) {
-    gone = 1;
-    Serial.println("device gone");
-  };
-  void onReceive(const usb_transfer_t *transfer){
-      if (!transfer->data_buffer) return;
-      int i=0;
-      int modifier = 0;
-      int firstKey = 0;
-      int secondKey = 0;
-      for (i = 0;i<transfer->data_buffer_size && i < 50;i++ ){
-        Serial.printf("%02x ", transfer->data_buffer[i]);
+public:
+  void onReceive(const usb_transfer_t *transfer) override {
+    if (deviceGone) {
+      Serial.println("Ignoring data from disconnected device");
+      return;
+    }
+    if (!transfer || !transfer->data_buffer) {
+      Serial.println("Invalid transfer buffer");
+      return;
+    }
+
+    // Dump limited bytes for debug
+    size_t toPrint = min((int)transfer->data_buffer_size, 50);
+    for (size_t i = 0; i < toPrint; i++) {
+      Serial.printf("%02x ", transfer->data_buffer[i]);
+    }
+    Serial.println();
+
+    // Ensure we have at least the standard 8-byte keyboard report
+    if (transfer->num_bytes >= HID_KEYBOARD_REPORT_SIZE &&
+        transfer->data_buffer_size >= HID_KEYBOARD_REPORT_SIZE) {
+      uint8_t modifier = transfer->data_buffer[0];
+      uint8_t firstKey = transfer->data_buffer[2];
+      uint8_t secondKey = transfer->data_buffer[3];
+
+      // Visual feedback for RX
+      ledGreen();
+
+      // Encode as 16-bit values: upper byte = modifier, lower byte = key
+      uint16_t encodedFirst = 0;
+      uint16_t encodedSecond = 0;
+      if (firstKey > 0) {
+        encodedFirst = (uint16_t)firstKey | ((uint16_t)modifier << 8);
       }
-      Serial.println();
-
-      if (transfer->num_bytes > 4 && transfer->data_buffer_size > 4) { // sanity somewhat here
-        modifier  = (transfer->data_buffer[0]);
-        firstKey  = (transfer->data_buffer[2]);
-        secondKey = (transfer->data_buffer[3]);
-
-         if (firstKey > 0) firstKey += (modifier * 0xff);
-         if (secondKey > 0) secondKey += (modifier * 0xff);
-
-
-        // return; // bit of mojibake here
-        if (firstKey > 0) {
-          sendCMD( modifier,  firstKey & 0xff,  (firstKey >> 8) & 0xff);
-        } else if (secondKey > 0) {
-          sendCMD( modifier,  secondKey & 0xff,  (secondKey >> 8) & 0xff);
-        }
-
+      if (secondKey > 0) {
+        encodedSecond = (uint16_t)secondKey | ((uint16_t)modifier << 8);
       }
+
+      // Send primary key if present
+      if (encodedFirst != 0) {
+        (void)sendCMD((uint8_t)(encodedFirst & 0xFF), (uint8_t)((encodedFirst >> 8) & 0xFF));
+      }
+      // Send secondary key if present
+      if (encodedSecond != 0) {
+        (void)sendCMD((uint8_t)(encodedSecond & 0xFF), (uint8_t)((encodedSecond >> 8) & 0xFF));
+      }
+
+      ledOff();
+    }
+  }
+
+  void onGone(const usb_host_client_event_msg_t *eventMsg) override {
+    deviceGone = 1;
+    Serial.println("USB device gone");
+  }
+
+  void onConnected() {
+    deviceGone = 0;
+    Serial.println("USB device connected");
   }
 };
 
 MyEspUsbHost usbHost;
 
+// ------------------------------
+// Setup and Loop
+// ------------------------------
+
 void setup() {
   Serial.begin(115200);
-//  delay(500);
-  int i;
-  tick = xTaskGetTickCount();
+  delay(100);
 
-gone = 0;
+  pixels.begin();
+  ledOff();
+
+  // Watchdog
+  esp_task_wdt_init(WDT_TIMEOUT_SECONDS, true);
+  esp_task_wdt_add(NULL);
+
+  // Initialize CAN
+  if (!beginCanWithRetry()) {
+    // Fatal: leave LED red and halt
+    while (true) {
+      delay(1000);
+    }
+  }
+
+  // Initialize USB Host
   usbHost.begin();
-  usbHost.setHIDLocal(HID_LOCAL_Japan_Katakana);
-  usbHost.task();
+  deviceGone = 1;  // Until we know a device is present
 
-  ESP32Can.setPins(CAN_TX, CAN_RX);
-  ESP32Can.setRxQueueSize(500);
-  ESP32Can.setTxQueueSize(500);
-  ESP32Can.setSpeed(ESP32Can.convertSpeed(500));
-  while(!ESP32Can.begin());
+  // Initialize buttons
+  for (int i = 0; i < BUTTON_COUNT; i++) {
+    pinMode(BUTTON_PINS[i], INPUT_PULLUP);
+    buttonStates[i].stableLevel = HIGH;
+    buttonStates[i].lastReadLevel = HIGH;
+    buttonStates[i].lastChangeMs = millis();
+    buttonStates[i].pressed = 0;
+  }
+}
+
+static void handleCanRx() {
+  // Minimal non-destructive draining: read and discard with optional lightweight processing
+  CanFrame rx;
+  while (ESP32Can.inRxQueue() > 0) {
+    if (ESP32Can.readFrame(rx, 0)) {
+      // Optionally process received CAN frames here
+      // For now, ignore or add a tiny heartbeat print occasionally to avoid flooding
+    }
+  }
 }
 
 void loop() {
-  while (ESP32Can.inRxQueue() > 0) {
-    ESP32Can.readFrame(rxobdFrame, 0);
-  }
-  if (xTaskGetTickCount() - tick > 1000) {
-    tick = xTaskGetTickCount();
+  esp_task_wdt_reset();
 
-
-/*  Serial.printf("txq: %d, rxq: %d, rxerr: %d. txerr: %d, rxmis: %d, txmis: %d, buserr: %d, canstate: %d, notWorking: %d", 
-   ESP32Can.inTxQueue(),
-   ESP32Can.inRxQueue(),
-   ESP32Can.rxErrorCounter(),
-   ESP32Can.txErrorCounter(),
-   ESP32Can.rxMissedCounter(),
-   ESP32Can.txFailedCounter(),
-   ESP32Can.busErrCounter(),
-   ESP32Can.canState(), notWorking);
-    Serial.println();
-*/
-
-  if (notWorking > 30 || ESP32Can.busErrCounter() > 30 ) {
-    Serial.print(" busErrCounter - restarting esp");
-    ESP.restart();
-  } 
-}
   usbHost.task();
+  handleCanRx();
 
+  // Scan buttons with debounce (active-low)
+  uint32_t nowMs = millis();
+  for (int i = 0; i < BUTTON_COUNT; i++) {
+    uint8_t raw = (uint8_t)digitalRead(BUTTON_PINS[i]);
+    if (raw != buttonStates[i].lastReadLevel) {
+      buttonStates[i].lastReadLevel = raw;
+      buttonStates[i].lastChangeMs = nowMs;
+    }
+    if ((nowMs - buttonStates[i].lastChangeMs) >= DEBOUNCE_MS) {
+      if (raw != buttonStates[i].stableLevel) {
+        // Stable state changed after debounce
+        uint8_t prev = buttonStates[i].stableLevel;
+        buttonStates[i].stableLevel = raw;
+        // Detect press edge: HIGH->LOW (with pullup)
+        if (prev == HIGH && raw == LOW) {
+          buttonStates[i].pressed = 1;
+        }
+      }
+    }
+    if (buttonStates[i].pressed) {
+      buttonStates[i].pressed = 0;
+      // Send CAN message representing this button as a key press (no modifiers)
+      uint8_t key = BUTTON_HID_CODES[i];
+      uint16_t encoded = (uint16_t)key; // modifier = 0, so MSB=0
+      ledGreen();
+      (void)sendCMD((uint8_t)(encoded & 0xFF), (uint8_t)((encoded >> 8) & 0xFF));
+      ledOff();
+    }
+  }
 }
+
 
