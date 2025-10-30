@@ -3,6 +3,9 @@
 #include <Adafruit_NeoPixel.h>
 #include "esp_task_wdt.h"
 #include <ESP32-TWAI-CAN.hpp>
+#include <WiFi.h>
+#include <WebServer.h>
+#include <ESPmDNS.h>
 
 // ------------------------------
 // Configuration Constants
@@ -12,6 +15,7 @@
 #define CAN_TX_PIN                 5
 #define CAN_RX_PIN                 4
 #define LED_NEOPIXEL_PIN           48
+#define SHIFT_LIGHT_GPIO           14  // Dedicated GPIO for shift light LED
 
 // CAN protocol constants
 #define CAN_ADDRESS_BUTTONBOX      0x711
@@ -23,8 +27,19 @@
 #define CAN_ID_GET_VAR_REQ_BASE    0x700  // + ecuId
 #define CAN_ID_GET_VAR_RES_BASE    0x720  // + ecuId
 #define VAR_ID_TPS_VALUE           1272048601  // TPSValue variable ID
+#define VAR_ID_RPM_VALUE           1699696209  // RPMValue variable ID
+#define VAR_ID_AFR_VALUE           -1093429509 // AFRValue (O2 sensor) variable ID
 #define ECU_ID                     1           // Target ECU ID
 #define VAR_READ_INTERVAL_MS       1000        // Read every second
+
+// Shift light configuration
+#define SHIFT_LIGHT_RPM_THRESHOLD  4000        // RPM threshold for shift light activation
+
+// WiFi configuration
+#define WIFI_AP_SSID               "CAN-Bridge-AP"
+#define WIFI_AP_PASSWORD           "canbridge123"
+#define WIFI_AP_CHANNEL            1
+#define WIFI_MAX_CONNECTIONS       4
 
 // Timing and retries
 #define CAN_RETRY_DELAY_MS         13
@@ -82,6 +97,14 @@ static volatile uint32_t canErrorCount = 0;
 
 // Variable reading state
 static uint32_t lastVarReadTime = 0;
+static uint8_t requestCounter = 0;  // Counter to cycle through TPS, RPM, and AFR
+
+// WiFi and web server
+WebServer server(80);
+static volatile float tpsValue = 0.0;
+static volatile float rpmValue = 0.0;
+static volatile float afrValue = 0.0;
+static volatile bool shiftLightActive = false;
 
 typedef struct {
   uint8_t stableLevel;      // last stable level (HIGH with pullup = not pressed)
@@ -117,6 +140,23 @@ static inline void ledGreen() {
 static inline void ledRed() {
   pixels.setPixelColor(0, pixels.Color(255, 0, 0));
   pixels.show();
+}
+
+static inline void ledYellow() {
+  pixels.setPixelColor(0, pixels.Color(255, 200, 0));
+  pixels.show();
+}
+
+// ------------------------------
+// Shift light LED helpers
+// ------------------------------
+
+static inline void shiftLightOn() {
+  digitalWrite(SHIFT_LIGHT_GPIO, HIGH);  // Turn on LED
+}
+
+static inline void shiftLightOff() {
+  digitalWrite(SHIFT_LIGHT_GPIO, LOW);   // Turn off LED
 }
 
 // ------------------------------
@@ -282,6 +322,87 @@ public:
 MyEspUsbHost usbHost;
 
 // ------------------------------
+// Web server handlers
+// ------------------------------
+
+void handleRoot() {
+  String html = R"(
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CAN Bridge Monitor</title>
+    <meta http-equiv="refresh" content="1">
+    <style>
+        body { font-family: Arial; background: #1a1a1a; color: #fff; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        .card { background: #2d2d2d; border-radius: 10px; padding: 20px; margin: 10px 0; }
+        .value { font-size: 48px; font-weight: bold; color: #4CAF50; }
+        .label { font-size: 18px; color: #888; margin-bottom: 10px; }
+        .shift-light { background: #ff4444; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>CAN Bridge Monitor</h1>
+        
+        <div class="card">
+            <div class="label">Throttle Position (TPS)</div>
+            <div class="value">)" + String(tpsValue, 1) + R"(</div>
+        </div>
+        
+        <div class="card">
+            <div class="label">Engine RPM</div>
+            <div class="value">)" + String(rpmValue, 0) + R"( rpm</div>
+        </div>
+        
+        <div class="card">
+            <div class="label">AFR (O2 Sensor)</div>
+            <div class="value">)" + String(afrValue, 2) + R"(</div>
+        </div>
+        
+        <div class="card)" + (shiftLightActive ? String(" shift-light") : String("")) + R"(">
+            <div class="label">Shift Light</div>
+            <div class="value">)" + (shiftLightActive ? String("ON") : String("OFF")) + R"(</div>
+        </div>
+    </div>
+</body>
+</html>)";
+  
+  server.send(200, "text/html", html);
+}
+
+void handleData() {
+  // JSON API for AJAX requests
+  String json = "{";
+  json += "\"tps\":" + String(tpsValue, 2) + ",";
+  json += "\"rpm\":" + String(rpmValue, 0) + ",";
+  json += "\"afr\":" + String(afrValue, 2) + ",";
+  json += "\"shiftLight\":" + String(shiftLightActive ? "true" : "false");
+  json += "}";
+  
+  server.send(200, "application/json", json);
+}
+
+void initWiFi() {
+  // Start WiFi access point
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASSWORD, WIFI_AP_CHANNEL, false, WIFI_MAX_CONNECTIONS);
+  
+  IPAddress IP = WiFi.softAPIP();
+  Serial.println("WiFi AP started");
+  Serial.print("AP SSID: ");
+  Serial.println(WIFI_AP_SSID);
+  Serial.print("AP IP address: ");
+  Serial.println(IP);
+  
+  // Start web server
+  server.on("/", handleRoot);
+  server.on("/data", handleData);
+  server.begin();
+  Serial.println("Web server started at http://" + IP.toString());
+}
+
+// ------------------------------
 // Setup and Loop
 // ------------------------------
 
@@ -330,9 +451,19 @@ void setup() {
     buttonStates[i].active = 0;
   }
 
+  // Initialize shift light GPIO (output, initially off)
+  pinMode(SHIFT_LIGHT_GPIO, OUTPUT);
+  shiftLightOff();
+
+  // Initialize WiFi access point and web server
+  initWiFi();
+
   // Print variable reading info
   Serial.println("keyboard_basic1 initialized");
-  Serial.printf("Reading variable ID %d (TPSValue) from ECU %d every second\n", VAR_ID_TPS_VALUE, ECU_ID);
+  Serial.printf("Reading variables from ECU %d every second:\n", ECU_ID);
+  Serial.printf("  - TPSValue (ID %d)\n", VAR_ID_TPS_VALUE);
+  Serial.printf("  - RPMValue (ID %d) - Shift light at %d rpm\n", VAR_ID_RPM_VALUE, SHIFT_LIGHT_RPM_THRESHOLD);
+  Serial.printf("  - AFRValue (ID %d)\n", VAR_ID_AFR_VALUE);
 }
 
 static void handleCanRx() {
@@ -343,9 +474,31 @@ static void handleCanRx() {
       if ((rx.identifier & 0x7F0) == CAN_ID_GET_VAR_RES_BASE && rx.data_length_code == 8) {
         if ((rx.identifier & 0x0F) == (ECU_ID & 0x0F)) {
           int32_t received_var_id = be_i32(rx.data);
+          
           if (received_var_id == VAR_ID_TPS_VALUE) {
             float value = be_f32(&rx.data[4]);
+            tpsValue = value;  // Store for web display
             Serial.printf("Variable ID %d (TPSValue): %.6f\n", received_var_id, value);
+          }
+          else if (received_var_id == VAR_ID_RPM_VALUE) {
+            float rpm = be_f32(&rx.data[4]);
+            rpmValue = rpm;  // Store for web display
+            Serial.printf("Variable ID %d (RPMValue): %.1f rpm\n", received_var_id, rpm);
+            
+            // Shift light logic: activate if RPM >= 4000
+            if (rpm >= SHIFT_LIGHT_RPM_THRESHOLD) {
+              shiftLightOn();   // Activate shift light on dedicated GPIO
+              shiftLightActive = true;  // Set flag for web display
+              Serial.println("SHIFT LIGHT: ON");
+            } else {
+              shiftLightOff();  // Turn off shift light
+              shiftLightActive = false;  // Clear flag
+            }
+          }
+          else if (received_var_id == VAR_ID_AFR_VALUE) {
+            float afr = be_f32(&rx.data[4]);
+            afrValue = afr;  // Store for web display
+            Serial.printf("Variable ID %d (AFRValue): %.2f\n", received_var_id, afr);
           }
         }
       }
@@ -358,12 +511,23 @@ void loop() {
 
   usbHost.task();
   handleCanRx();
+  server.handleClient();  // Handle web server requests
 
-  // Periodic variable reading every second
+  // Periodic variable reading every second - cycle through TPS, RPM, and AFR
   uint32_t nowMs = millis();
   if (nowMs - lastVarReadTime >= VAR_READ_INTERVAL_MS) {
-    if (requestVar(VAR_ID_TPS_VALUE)) {
+    bool success = false;
+    if (requestCounter == 0) {
+      success = requestVar(VAR_ID_TPS_VALUE);
+    } else if (requestCounter == 1) {
+      success = requestVar(VAR_ID_RPM_VALUE);
+    } else {
+      success = requestVar(VAR_ID_AFR_VALUE);
+    }
+    
+    if (success) {
       lastVarReadTime = nowMs;
+      requestCounter = (requestCounter + 1) % 3;  // Cycle through 0, 1, 2 (TPS, RPM, AFR)
     }
   }
 
