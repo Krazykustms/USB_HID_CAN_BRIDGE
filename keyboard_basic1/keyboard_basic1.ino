@@ -19,6 +19,13 @@
 #define CAN_BUTTON_BOX_ID          27
 #define CAN_SPEED_KBPS             500
 
+// EPIC CAN protocol constants for variable reading
+#define CAN_ID_GET_VAR_REQ_BASE    0x700  // + ecuId
+#define CAN_ID_GET_VAR_RES_BASE    0x720  // + ecuId
+#define VAR_ID_TPS_VALUE           1272048601  // TPSValue variable ID
+#define ECU_ID                     1           // Target ECU ID
+#define VAR_READ_INTERVAL_MS       1000        // Read every second
+
 // Timing and retries
 #define CAN_RETRY_DELAY_MS         13
 #define CAN_MAX_RETRIES            5
@@ -72,6 +79,9 @@ Adafruit_NeoPixel pixels(LED_NUM_PIXELS, LED_NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800)
 static volatile int deviceGone = 1;  // 1 = no device connected
 
 static volatile uint32_t canErrorCount = 0;
+
+// Variable reading state
+static uint32_t lastVarReadTime = 0;
 
 typedef struct {
   uint8_t stableLevel;      // last stable level (HIGH with pullup = not pressed)
@@ -132,6 +142,41 @@ static bool beginCanWithRetry() {
     return false;
   }
   return true;
+}
+
+// Helper: write big-endian 32-bit
+static void be_u32(uint8_t *b, uint32_t v) {
+    b[0] = (v >> 24) & 0xFF;
+    b[1] = (v >> 16) & 0xFF;
+    b[2] = (v >> 8) & 0xFF;
+    b[3] = v & 0xFF;
+}
+
+// Helper: read big-endian int32
+static int32_t be_i32(uint8_t *b) {
+    return (int32_t)((uint32_t)b[0] << 24 | (uint32_t)b[1] << 16 | (uint32_t)b[2] << 8 | (uint32_t)b[3]);
+}
+
+// Helper: read big-endian float32
+static float be_f32(uint8_t *b) {
+    uint32_t bits = (uint32_t)b[0] << 24 | (uint32_t)b[1] << 16 | (uint32_t)b[2] << 8 | (uint32_t)b[3];
+    float val;
+    memcpy(&val, &bits, sizeof(float));
+    return val;
+}
+
+// Request variable from ECU
+static bool requestVar(int32_t var_id) {
+    uint8_t data[4];
+    be_u32(data, (uint32_t)var_id);
+    
+    CanFrame frame = {0};
+    frame.identifier = CAN_ID_GET_VAR_REQ_BASE + (ECU_ID & 0x0F);
+    frame.extd = 0;  // Standard frame
+    frame.data_length_code = 4;
+    memcpy(frame.data, data, 4);
+    
+    return ESP32Can.writeFrame(frame, 5);
 }
 
 static bool sendCMD(uint8_t keyLSB, uint8_t keyMSB) {
@@ -284,15 +329,26 @@ void setup() {
     buttonStates[i].longFired = 0;
     buttonStates[i].active = 0;
   }
+
+  // Print variable reading info
+  Serial.println("keyboard_basic1 initialized");
+  Serial.printf("Reading variable ID %d (TPSValue) from ECU %d every second\n", VAR_ID_TPS_VALUE, ECU_ID);
 }
 
 static void handleCanRx() {
-  // Minimal non-destructive draining: read and discard with optional lightweight processing
   CanFrame rx;
   while (ESP32Can.inRxQueue() > 0) {
     if (ESP32Can.readFrame(rx, 0)) {
-      // Optionally process received CAN frames here
-      // For now, ignore or add a tiny heartbeat print occasionally to avoid flooding
+      // Check if this is a variable response from our target ECU
+      if ((rx.identifier & 0x7F0) == CAN_ID_GET_VAR_RES_BASE && rx.data_length_code == 8) {
+        if ((rx.identifier & 0x0F) == (ECU_ID & 0x0F)) {
+          int32_t received_var_id = be_i32(rx.data);
+          if (received_var_id == VAR_ID_TPS_VALUE) {
+            float value = be_f32(&rx.data[4]);
+            Serial.printf("Variable ID %d (TPSValue): %.6f\n", received_var_id, value);
+          }
+        }
+      }
     }
   }
 }
@@ -303,8 +359,15 @@ void loop() {
   usbHost.task();
   handleCanRx();
 
-  // Scan buttons with debounce (active-low)
+  // Periodic variable reading every second
   uint32_t nowMs = millis();
+  if (nowMs - lastVarReadTime >= VAR_READ_INTERVAL_MS) {
+    if (requestVar(VAR_ID_TPS_VALUE)) {
+      lastVarReadTime = nowMs;
+    }
+  }
+
+  // Scan buttons with debounce (active-low)
   for (int i = 0; i < BUTTON_COUNT; i++) {
     uint8_t raw = (uint8_t)digitalRead(BUTTON_PINS[i]);
     if (raw != buttonStates[i].lastReadLevel) {
@@ -342,7 +405,7 @@ void loop() {
             }
             buttonStates[i].longFired = 0;
           } else {
-            buttonStates[i].longFired = 0;
+          buttonStates[i].longFired = 0;
           }
         }
       }
