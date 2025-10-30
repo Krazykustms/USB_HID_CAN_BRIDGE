@@ -240,6 +240,8 @@ static bool sendCMD(uint8_t keyLSB, uint8_t keyMSB) {
     ledBlue();
     bool queued = ESP32Can.writeFrame(frame, 5 /* small timeout to allow queue */);
     if (queued) {
+      // Reset error counter on successful queue
+      canErrorCount = 0;
       ledOff();
       return true;
     }
@@ -360,7 +362,7 @@ void handleRoot() {
             <div class="value">)" + String(afrValue, 2) + R"(</div>
         </div>
         
-        <div class="card)" + (shiftLightActive ? String(" shift-light") : String("")) + R"(">
+        <div class="card" + (shiftLightActive ? String(" shift-light") : String("")) + R"(")>
             <div class="label">Shift Light</div>
             <div class="value">)" + (shiftLightActive ? String("ON") : String("OFF")) + R"(</div>
         </div>
@@ -524,9 +526,10 @@ void loop() {
     } else {
       success = requestVar(VAR_ID_AFR_VALUE);
     }
-    
+
+    // Always advance the timer to avoid spamming the bus on failures
+    lastVarReadTime = nowMs;
     if (success) {
-      lastVarReadTime = nowMs;
       requestCounter = (requestCounter + 1) % 3;  // Cycle through 0, 1, 2 (TPS, RPM, AFR)
     }
   }
