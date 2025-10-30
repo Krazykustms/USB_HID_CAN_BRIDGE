@@ -56,7 +56,7 @@ static const uint8_t BUTTON_HID_CODES[BUTTON_COUNT] = {
 
 // Long-press configuration
 #define LONG_PRESS_BUTTON_INDEX     4   // Index in BUTTON_PINS / BUTTON_HID_CODES (GPIO 10)
-#define LONG_PRESS_MS               5000
+#define LONG_PRESS_MS               3000   // 3 seconds for activation
 
 // ------------------------------
 // Globals
@@ -80,6 +80,7 @@ typedef struct {
   uint8_t pressed;          // edge-detected pressed flag (cleared after handled)
   uint32_t holdStartMs;     // when LOW became stable (for long press)
   uint8_t longFired;        // prevent repeat firing on long press
+  uint8_t active;           // latched active state (used for GPIO 10 long/short behavior)
 } ButtonState;
 
 static ButtonState buttonStates[BUTTON_COUNT];
@@ -279,6 +280,9 @@ void setup() {
     buttonStates[i].lastReadLevel = HIGH;
     buttonStates[i].lastChangeMs = millis();
     buttonStates[i].pressed = 0;
+    buttonStates[i].holdStartMs = 0;
+    buttonStates[i].longFired = 0;
+    buttonStates[i].active = 0;
   }
 }
 
@@ -315,26 +319,51 @@ void loop() {
         // Detect press edge: HIGH->LOW (with pullup)
         if (prev == HIGH && raw == LOW) {
           if (i == LONG_PRESS_BUTTON_INDEX) {
-            // For the long-press button, arm the hold timer and do not trigger yet
+            // For GPIO 10: arm long-press timer for activation; do not send yet
             buttonStates[i].holdStartMs = nowMs;
             buttonStates[i].longFired = 0;
           } else {
+            // Other buttons: short press sends immediately
             buttonStates[i].pressed = 1;
           }
         }
-        // Detect release edge: LOW->HIGH, reset long-press state
+        // Detect release edge: LOW->HIGH
         if (prev == LOW && raw == HIGH) {
-          buttonStates[i].longFired = 0;
+          if (i == LONG_PRESS_BUTTON_INDEX) {
+            // If released before long press fired, treat as short press -> de-activate if active
+            if (!buttonStates[i].longFired && buttonStates[i].active) {
+              uint8_t key = BUTTON_HID_CODES[i];
+              uint16_t encoded = (uint16_t)key; // modifier = 0
+              Serial.printf("GPIO %d short release -> Deactivate (HID 0x%02X)\n", BUTTON_PINS[i], key);
+              ledGreen();
+              (void)sendCMD((uint8_t)(encoded & 0xFF), (uint8_t)((encoded >> 8) & 0xFF));
+              ledOff();
+              buttonStates[i].active = 0;
+            }
+            buttonStates[i].longFired = 0;
+          } else {
+            buttonStates[i].longFired = 0;
+          }
         }
       }
     }
     // While held LOW, check for long-press timeout on the designated button
     if (i == LONG_PRESS_BUTTON_INDEX && buttonStates[i].stableLevel == LOW) {
       if (!buttonStates[i].longFired && (nowMs - buttonStates[i].holdStartMs) >= LONG_PRESS_MS) {
-        buttonStates[i].pressed = 1;
+        // Long press -> Activate (send once if not already active)
+        if (!buttonStates[i].active) {
+          uint8_t key = BUTTON_HID_CODES[i];
+          uint16_t encoded = (uint16_t)key; // modifier = 0
+          Serial.printf("GPIO %d long press -> Activate (HID 0x%02X)\n", BUTTON_PINS[i], key);
+          ledGreen();
+          (void)sendCMD((uint8_t)(encoded & 0xFF), (uint8_t)((encoded >> 8) & 0xFF));
+          ledOff();
+          buttonStates[i].active = 1;
+        }
         buttonStates[i].longFired = 1;
       }
     }
+    // Handle immediate-send buttons (non-GPIO10 buttons)
     if (buttonStates[i].pressed) {
       buttonStates[i].pressed = 0;
       // Send CAN message representing this button as a key press (no modifiers)
