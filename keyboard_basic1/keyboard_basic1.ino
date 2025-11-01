@@ -591,6 +591,20 @@ void loop() {
   // Fast variable reading with pipelining
   // Send requests as fast as possible, allowing multiple requests in flight
   uint32_t nowMs = millis();
+  if (nowMs - lastVarReadTime >= VAR_READ_INTERVAL_MS) {
+    bool success = false;
+    if (requestCounter == 0) {
+      success = requestVar(VAR_ID_TPS_VALUE);
+    } else if (requestCounter == 1) {
+      success = requestVar(VAR_ID_RPM_VALUE);
+    } else {
+      success = requestVar(VAR_ID_AFR_VALUE);
+    }
+
+    // Always advance the timer to avoid spamming the bus on failures
+    lastVarReadTime = nowMs;
+    if (success) {
+      requestCounter = (requestCounter + 1) % 3;  // Cycle through 0, 1, 2 (TPS, RPM, AFR)
   
   // Check if we should send another request
   if (pendingRequestCount < MAX_PENDING_REQUESTS) {
