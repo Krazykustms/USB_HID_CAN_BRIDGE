@@ -1,4 +1,4 @@
-# Tech Context: USB_HID_CAN_BRIDGE / EPIC CAN Logger
+# Tech Context: EPIC CAN Logger
 
 ## Technologies Used
 

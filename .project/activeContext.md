@@ -1,4 +1,4 @@
-# Active Context: USB_HID_CAN_BRIDGE / EPIC CAN Logger
+# Active Context: EPIC CAN Logger
 
 ## Current Work Focus
 Project has reached professional-grade status with dual-version support. Recent focus has been on mobile app enhancements, specifically PWA icon configuration for Android devices. The system now provides both standard EPIC-only version and ISO-compliant version for diagnostic tool compatibility, along with a fully functional Progressive Web App (PWA) mobile interface.

@@ -1,18 +1,21 @@
-# USB HID to CAN Bridge (USB_HID_CAN_BRIDGE)
+# EPIC CAN Logger
 
 ## Project Overview
 
-This firmware bridges USB keyboard input to CAN bus messages on an ESP32-S3 platform.
-It receives keystrokes from a USB keyboard connected to the ESP32-S3 USB OTG port and 
-transmits encoded key data over a CAN bus network using address 0x711 (CANBUS BUTTONBOX).
+Professional-grade ESP32-S3-based CAN bus data logger for EPIC ECU systems with ISO 14229/15765 compliance support.
 
-Key features:
-- USB HID keyboard input via USB OTG
-- CAN bus transmission at 500 kbps
-- Modifier key support (shift, ctrl, alt)
-- Visual status feedback via WS2812 RGB LED (Green=RX, Blue=TX)
-- Automatic error recovery with restart on failure
-- Serial debug output at 115200 baud
+This system provides comprehensive CAN bus data logging, real-time monitoring, and runtime configuration capabilities for automotive ECU diagnostics and tuning.
+
+**Key Features:**
+- ✅ EPIC ECU variable logging via proprietary CAN protocol
+- ✅ ISO 14229/15765 compliant version (diagnostic tool compatible)
+- ✅ rusEFI CAN broadcast decoding (DBC format)
+- ✅ SD card logging with data integrity (sequence numbers, CRC16 checksums)
+- ✅ Real-time web dashboard with live monitoring
+- ✅ Mobile Progressive Web App (PWA) with proper icon support
+- ✅ Runtime configuration via web interface (no code changes needed)
+- ✅ USB keyboard input bridge (optional - original functionality)
+- ✅ Professional-grade error handling and graceful degradation
 
 ## Parts Needed
 

@@ -1,7 +1,7 @@
-# USB_HID_CAN_BRIDGE Memory Bank
+# EPIC CAN Logger Memory Bank
 
 ## Project Overview
-USB_HID_CAN_BRIDGE is an ESP32-S3 USB OTG project that bridges USB keyboard input to CAN bus communication.
+EPIC CAN Logger is a professional-grade ESP32-S3 embedded system for comprehensive CAN bus data logging, ECU monitoring, and real-time diagnostics with ISO 14229/15765 compliance support.
 
 ## Hardware Requirements
 - ESP32-S3-USB-OTG board

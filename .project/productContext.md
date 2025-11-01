@@ -1,4 +1,4 @@
-# Product Context: USB_HID_CAN_BRIDGE / EPIC CAN Logger
+# Product Context: EPIC CAN Logger
 
 ## Problem Statement
 Many automotive and industrial control systems use CAN bus for communication, but lack native USB keyboard input support AND need comprehensive data logging capabilities. This creates a need for a bridge device that can translate standard USB keyboard input into CAN bus messages AND log ECU variables for analysis.

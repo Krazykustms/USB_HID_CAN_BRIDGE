@@ -1,4 +1,4 @@
-# Progress: USB_HID_CAN_BRIDGE / EPIC CAN Logger
+# Progress: EPIC CAN Logger
 
 ## What Works
 

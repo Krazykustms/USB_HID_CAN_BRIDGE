@@ -1,7 +1,7 @@
-# Project Brief: USB_HID_CAN_BRIDGE / EPIC CAN Logger
+# Project Brief: EPIC CAN Logger
 
 ## Overview
-USB_HID_CAN_BRIDGE is an ESP32-S3 embedded firmware project that bridges USB keyboard HID input to CAN bus messages AND logs EPIC ECU variables via CAN bus. The system has evolved into a comprehensive data logging platform with dual-protocol support (EPIC proprietary + ISO 14229/15765).
+EPIC CAN Logger is a professional-grade ESP32-S3 embedded firmware project that provides comprehensive CAN bus data logging for EPIC ECU systems. The system includes dual-protocol support (EPIC proprietary + ISO 14229/15765), real-time monitoring, SD card logging, and a mobile Progressive Web App interface.
 
 ## Core Requirements
 

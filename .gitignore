@@ -1,0 +1,74 @@
+# EPIC CAN Logger - Git Ignore File
+
+# Arduino IDE
+*.ino.bak
+*.bak
+*~
+
+# Build artifacts
+*.hex
+*.elf
+*.bin
+*.map
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# Logs
+*.log
+*.csv
+LOG*.csv
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# Private/Sensitive files
+PRIVATE_*.md
+*PURCHASE*.md
+MOBILE_ACCESS.txt
+
+# Test files
+test_*.html
+*_test.py
+*_sample.json
+
+# Analysis/Report files
+*_ANALYSIS*.md
+*_REPORT*.md
+analyze_*.py
+detailed_code_analysis.py
+project_health_check.py
+
+# Documentation drafts
+MAKE_PRIVATE_STEPS.md
+GITHUB_PRIVATE_SETUP_GUIDE.md
+NEW_REPOSITORY_MIGRATION_GUIDE.md
+MIGRATE_TO_NEW_REPO.bat
+
