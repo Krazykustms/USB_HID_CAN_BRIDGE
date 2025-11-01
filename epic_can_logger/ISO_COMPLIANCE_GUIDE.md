@@ -820,18 +820,24 @@ bool iso15765_receive_multi(CanFrame* frame, uint8_t* data, uint16_t* length) {
 
 ## Conclusion
 
-**ISO 14229/15765 compliance requires**:
-1. ✅ ISO 15765 transport layer (multi-frame handling)
-2. ✅ UDS service layer (service handlers)
-3. ✅ Session management
-4. ✅ Error handling (negative responses)
-5. ✅ Timing compliance
+**ISO 14229/15765 compliance status (Updated 2025-01-27)**:
+1. ✅ ISO 15765 transport layer (multi-frame handling) - **IMPLEMENTED**
+2. ✅ UDS service layer (service handlers) - **IMPLEMENTED**
+3. ✅ Session management - **IMPLEMENTED**
+4. ✅ Error handling (negative responses) - **IMPLEMENTED**
+5. ✅ Timing compliance - **IMPLEMENTED**
 
-**Key Service**: `ReadDataByIdentifier (0x22)` maps your EPIC variables to standard UDS interface
+**Key Service**: `ReadDataByIdentifier (0x22)` maps EPIC variables to standard UDS interface
 
-**Recommendation**: Start with transport layer, then core services. Add advanced services as needed.
+**Implementation Status**: ✅ **COMPLETE** - ISO-compliant version (`epic_can_logger_iso.ino`) is production-ready
+
+**Available Versions**:
+- **Standard Version**: EPIC protocol + rusEFI DBC + SD logging (no ISO)
+- **ISO Version**: All standard features + ISO 14229/15765 compliance
+
+**Recommendation**: Use ISO version for diagnostic tool compatibility, standard version for internal/custom use.
 
 ---
 
-**See also**: `IMPLEMENTATION_ROADMAP.md` for detailed code structure and examples.
+**See also**: `VERSIONS.md` for version selection guide and `ISO_IMPLEMENTATION.md` for detailed implementation notes.
 

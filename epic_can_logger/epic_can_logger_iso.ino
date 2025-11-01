@@ -239,9 +239,14 @@ typedef struct {
     float value;
     uint32_t timestamp_ms;
     bool valid;
+    uint32_t request_time_ms;  // ERROR #10 FIX: Track when request was sent
+    bool request_pending;       // ERROR #10 FIX: Track if request is pending
 } VarResponse;
 
 static VarResponse varResponses[EPIC_VAR_COUNT];  // Store latest value for each variable
+
+// ERROR #10 FIX: Variable response timeout checking
+#define VAR_RESPONSE_TIMEOUT_MS  2000  // 2 second timeout for variable responses
 
 // WiFi and web server
 WebServer server(80);
@@ -930,7 +935,21 @@ static void handleCanRx() {
   const uint32_t MAX_CAN_PROCESS_TIME_MS = 10;
   uint32_t processStartTime = nowMs;
   uint16_t messagesProcessed = 0;
-  const uint16_t MAX_MESSAGES_PER_CYCLE = 50;  // Limit to prevent starvation
+  
+  // ERROR #9 FIX: Adaptive processing limit based on queue depth
+  uint16_t queueDepth = ESP32Can.inRxQueue();
+  uint16_t MAX_MESSAGES_PER_CYCLE;
+  
+  if (queueDepth > 100) {
+    // High load - process more messages to catch up
+    MAX_MESSAGES_PER_CYCLE = 100;
+  } else if (queueDepth > 50) {
+    // Medium load - standard processing
+    MAX_MESSAGES_PER_CYCLE = 75;
+  } else {
+    // Normal load - standard limit
+    MAX_MESSAGES_PER_CYCLE = 50;
+  }
   
   while (ESP32Can.inRxQueue() > 0 && messagesProcessed < MAX_MESSAGES_PER_CYCLE) {
     // Time budget check - exit if taking too long
@@ -1132,6 +1151,9 @@ static void handleCanRx() {
               varResponses[i].value = value;
               varResponses[i].timestamp_ms = nowMs;
               varResponses[i].valid = true;
+              // ERROR #10 FIX: Clear pending request flag on successful response
+              varResponses[i].request_pending = false;
+              varResponses[i].request_time_ms = 0;
               found = true;
               
               // Log to SD card with timestamp and variable value
@@ -1217,11 +1239,31 @@ void loop() {
   // PRIORITY 1: CAN communication (highest priority - no delays)
   handleCanRx();  // Process all queued CAN messages first
   
-  // PRIORITY 2: CAN variable requests (time-critical)
+  // PRIORITY 1.5: ERROR #10 FIX - Cleanup timed-out variable requests
   uint32_t nowMs = millis();
+  for (uint8_t i = 0; i < EPIC_VAR_COUNT; i++) {
+    // Check for pending requests that have timed out
+    if (varResponses[i].request_pending && varResponses[i].request_time_ms > 0) {
+      uint32_t age = nowMs - varResponses[i].request_time_ms;
+      if (age > VAR_RESPONSE_TIMEOUT_MS) {
+        // Request timed out - clear pending flag and decrement pending count
+        DEBUG_CAN_RX_PRINT("WARN: Variable request timeout for var_id %d (age: %d ms)\n", 
+                          varResponses[i].var_id, age);
+        varResponses[i].request_pending = false;
+        varResponses[i].request_time_ms = 0;
+        
+        // Decrement pending count (saturate at 0)
+        if (pendingRequestCount > 0) {
+          pendingRequestCount--;
+        }
+      }
+    }
+  }
+  
+  // PRIORITY 2: CAN variable requests (time-critical)
   
   // Check if we should send another request
-  // Prevent overflow: pendingRequestCount is uint8_t, max 255
+  // ERROR #8 FIX: Prevent overflow - explicit wraparound protection
   // Use runtime configuration
   if (pendingRequestCount < runtimeMAX_PENDING && pendingRequestCount < 255) {
     // Time to send next request?
@@ -1230,8 +1272,19 @@ void loop() {
       // Send request for current variable
       int32_t var_id = EPIC_VARIABLES[currentVarIndex].var_id;
       if (requestVar(var_id)) {
-        // Safe increment - checked against MAX_PENDING_REQUESTS (16) and 255
-        pendingRequestCount++;
+        // ERROR #8 FIX: Safe increment with explicit wraparound protection
+        if (pendingRequestCount < 255) {
+          pendingRequestCount++;
+        } else {
+          // Counter at maximum, wait for responses
+          DEBUG_CAN_TX_PRINT("WARN: Pending request counter at maximum (255), waiting for responses\n");
+        }
+        
+        // ERROR #10 FIX: Track request time and pending status
+        varResponses[currentVarIndex].var_id = var_id;
+        varResponses[currentVarIndex].request_time_ms = nowMs;
+        varResponses[currentVarIndex].request_pending = true;
+        
         DEBUG_CAN_TX_PRINT("Request var[%d]: %s (ID: %d), pending: %d\n", 
                            currentVarIndex, EPIC_VARIABLES[currentVarIndex].name, var_id, pendingRequestCount);
         currentVarIndex = (currentVarIndex + 1) % EPIC_VAR_COUNT;

@@ -1,9 +1,18 @@
 # Active Context: USB_HID_CAN_BRIDGE / EPIC CAN Logger
 
 ## Current Work Focus
-Project has reached professional-grade status with dual-version support. Recent focus has been on implementing ISO 14229/15765 compliance (Phase 3) and separating versions. The system now provides both standard EPIC-only version and ISO-compliant version for diagnostic tool compatibility.
+Project has reached professional-grade status with dual-version support. Recent focus has been on mobile app enhancements, specifically PWA icon configuration for Android devices. The system now provides both standard EPIC-only version and ISO-compliant version for diagnostic tool compatibility, along with a fully functional Progressive Web App (PWA) mobile interface.
 
 ## Recent Changes
+
+### Mobile App PWA Icon Fixes (COMPLETED - 2025-01-27)
+- **Android Icon Configuration**: Fixed manifest.json icon paths to use absolute paths (`/images/icons/...`) instead of relative paths
+- **iOS Icon Support**: Added 180x180 icon size for iOS devices (Apple touch icon requirement)
+- **Icon Generation**: Updated `create_mobile_icons.py` to generate 180x180 icon size
+- **Manifest Updates**: Corrected `"purpose": "any maskable"` syntax error to `"purpose": "any"` (invalid JSON format)
+- **HTML Icon Links**: Added comprehensive icon link tags in embedded Python server HTML with all required sizes
+- **Icon Sizes**: Now includes 32x32, 96x96, 144x144, 180x180, 192x192, 512x512 for complete platform coverage
+- **Android-Specific**: Fixed gray square fallback icon issue on Android by ensuring absolute paths in manifest
 
 ### Phase 3: ISO 14229/15765 Compliance (COMPLETED)
 - **ISO 15765 Transport Layer**: Single-frame and multi-frame message handling

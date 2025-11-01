@@ -1,13 +1,19 @@
 {
-    "mcpServers": {
-      "mcp-memory-bank": {
-        "command": "uvx",
-        "args": [
-          "--from",
-          "git+https://github.com/ipospelov/mcp-memory-bank",
-          "mcp_memory_bank"
-        ]
+  "mcpServers": {
+    "mcp-memory-bank": {
+      "command": "python",
+      "args": [
+        "-m",
+        "uv",
+        "tool",
+        "run",
+        "--from",
+        "git+https://github.com/ipospelov/mcp-memory-bank",
+        "mcp_memory_bank"
+      ],
+      "env": {
+        "MEMORY_BANK_DIR": ".project"
       }
     }
   }
-  
+}

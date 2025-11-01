@@ -54,21 +54,25 @@ In **Tools** menu, set:
 - **Core Debug Level**: None (for production) or Info (for debugging)
 - **Port**: Select your COM port (Windows) or `/dev/ttyUSB*` (Linux)
 
-### 4. Configure Project Settings
+### 4. Configure Project Settings (Optional - Now Runtime Configurable!)
 
-Edit `epic_can_logger.ino`:
+**⚠️ IMPORTANT**: All settings are now configurable via web interface! You can skip this step and configure via web interface after upload.
+
+**If you want to set defaults in code**, edit `epic_can_logger.ino`:
 
 ```cpp
-// Line 135: Set your ECU ID
+// Line ~135: Set your ECU ID (default, can change via web)
 #define ECU_ID                     1  // Change to match your ECU
 
-// Line 136: CAN speed (typically 500 kbps)
+// Line ~136: CAN speed (default, can change via web, requires restart)
 #define CAN_SPEED_KBPS             500
 
-// Line 149: WiFi credentials (optional)
+// Line ~149: WiFi credentials (default, can change via web)
 #define WIFI_AP_SSID               "EPIC_CAN_LOGGER"
 #define WIFI_AP_PASSWORD            "password123"
 ```
+
+**Recommended**: Upload firmware first, then configure via web interface at `http://192.168.4.1/config`
 
 ### 5. Upload Firmware
 
@@ -82,18 +86,24 @@ Edit `epic_can_logger.ino`:
 
 You should see in Serial Monitor:
 ```
-CAN init failed, retrying... (3 remaining)
+EPIC CAN Logger initialized
+Configuration loaded from EEPROM (or using defaults)
+ECU ID: 1
+CAN Speed: 500 kbps
 WiFi AP started
 AP SSID: EPIC_CAN_LOGGER
 AP IP address: 192.168.4.1
-SD card initialized successfully
-EPIC CAN Logger initialized
-Logging 3 variables from ECU 1:
+Web server started at http://192.168.4.1
+SD card initialized successfully (if SD present)
+Started logging to: /LOG0001.csv (if SD present)
+Logging variables from ECU 1:
   - TPSValue (ID 1272048601)
   - RPMValue (ID 1699696209)
   - AFRValue (ID -1093429509)
 USB device connected (keyboard ready)
 ```
+
+> **Note**: Configuration is loaded from EEPROM. If first boot, defaults are used. Configure via web interface at `http://192.168.4.1/config`.
 
 ---
 
@@ -197,25 +207,53 @@ See `PIN_DIAGRAM.md` and `ASSEMBLY_BLUEPRINT.md` for complete wiring.
 
 ## 📚 Next Steps
 
+- **Complete Setup**: See `COMPLETE_SETUP_GUIDE.md` for comprehensive guide
 - **Assembly**: See `STEP_BY_STEP_ASSEMBLY.md`
+- **Mobile App**: See `mobile_app/MOBILE_ICON_INSTALL_GUIDE.md` for PWA installation
 - **Configuration**: See `EPIC_LOGGING_GUIDE.md`
-- **Pin Assignments**: See `PIN_DIAGRAM.md`
+- **Pin Assignments**: See `PIN_DIAGRAM.md` (if exists)
 - **Debug Output**: See `DEBUG_GUIDE.md`
-- **Performance**: See `PERFORMANCE_OPTIMIZATIONS.md`
+- **ISO Compliance**: See `ISO_COMPLIANCE_GUIDE.md` for ISO version info
+- **Version Selection**: See `VERSIONS.md` (if exists) for standard vs ISO choice
 
 ---
 
 ## ⚡ Quick Configuration Reference
+
+### Runtime Configuration (Recommended - Via Web Interface)
+
+All settings can be configured at `http://192.168.4.1/config` without reflashing:
+
+| Setting | Default | Runtime Changeable | Requires Restart |
+|---------|---------|-------------------|------------------|
+| **ECU ID** | 1 | ✅ Yes | ✅ Yes |
+| **CAN Speed** | 500 kbps | ✅ Yes | ✅ Yes |
+| **Request Interval** | 50 ms | ✅ Yes | ❌ No |
+| **Max Pending Requests** | 16 | ✅ Yes | ❌ No |
+| **Shift Light RPM** | 4000 | ✅ Yes | ❌ No |
+| **WiFi SSID** | EPIC_CAN_LOGGER | ✅ Yes | ❌ No |
+| **WiFi Password** | password123 | ✅ Yes | ❌ No |
+
+### Code-Level Configuration (Optional)
+
+Only needed if you want different defaults before first boot:
 
 | Setting | Location | Default | Notes |
 |---------|----------|---------|-------|
 | **ECU ID** | `epic_can_logger.ino:135` | 1 | Must match ECU |
 | **CAN Speed** | `epic_can_logger.ino:136` | 500 kbps | Match ECU |
 | **WiFi SSID** | `epic_can_logger.ino:149` | EPIC_CAN_LOGGER | Change if needed |
-| **WiFi Password** | `epic_can_logger.ino:150` | password123 | Change for security |
+| **WiFi Password** | `epic_can_logger.ino:150` | password123 | **Change for security!** |
 | **Debug Output** | `epic_can_logger.ino:18` | Enabled (1) | Set to 0 for production |
 | **Request Interval** | `epic_can_logger.ino:142` | 50 ms | Lower = faster logging |
 | **Max Pending Requests** | `epic_can_logger.ino:141` | 16 | Higher = more pipelining |
+
+### Version Selection
+
+- **Standard Version** (`epic_can_logger.ino`): EPIC + rusEFI DBC + SD logging
+- **ISO Version** (`epic_can_logger_iso.ino`): All standard + ISO 14229/15765 compliance
+
+**Recommendation**: Use standard version unless you need diagnostic tool compatibility.
 
 ---
 

@@ -1,9 +1,13 @@
 # Step-by-Step Assembly Guide
 ## EPIC CAN Logger - ESP32-S3-USB-OTG Build
 
+**Updated**: 2025-01-27  
+**Status**: Production-Ready with Mobile PWA Support  
 **Estimated Time**: 2-3 hours  
 **Difficulty**: Intermediate  
 **Tools Required**: Soldering iron, multimeter, wire strippers, breadboard (optional)
+
+> **📱 NEW**: This system now includes a fully functional mobile Progressive Web App (PWA) with proper icon support for Android and iOS. See `mobile_app/MOBILE_ICON_INSTALL_GUIDE.md` for mobile setup after assembly.
 
 ---
 
@@ -322,19 +326,24 @@ GPIO 40 ───────> [BTN 7] ───> GND
 **Expected Output**:
 ```
 EPIC CAN Logger initialized
-Logging 3 variables from ECU 1:
+Configuration loaded from EEPROM
+ECU ID: 1
+CAN Speed: 500 kbps
+Logging variables from ECU 1:
   - TPSValue (ID 1272048601)
   - RPMValue (ID 1699696209)
   - AFRValue (ID -1093429509)
 Request pipelining: max 16 pending requests
-Request interval: 10 ms
+Request interval: 50 ms
 WiFi AP started
-AP SSID: CAN-Bridge-AP
+AP SSID: EPIC_CAN_LOGGER
 AP IP address: 192.168.4.1
 Web server started at http://192.168.4.1
 SD card initialized successfully (if SD card present)
 Started logging to: /LOG0001.csv (if SD card present)
 ```
+
+> **Note**: Configuration is now loaded from EEPROM (runtime configurable via web interface). Default WiFi SSID is `EPIC_CAN_LOGGER` with password `password123`.
 
 ### 8.4: LED Status Indicators
 
@@ -359,10 +368,13 @@ Started logging to: /LOG0001.csv (if SD card present)
 **Time**: 5 minutes
 
 **Steps**:
-1. Connect phone/laptop to WiFi network: **"CAN-Bridge-AP"**
-2. Password: **"canbridge123"**
+1. Connect phone/laptop to WiFi network: **"EPIC_CAN_LOGGER"** (default)
+2. Password: **"password123"** (default, change via web config)
 3. Open browser to: **http://192.168.4.1**
 4. Should see dashboard with TPS, RPM, AFR values
+5. **BONUS**: Install as mobile PWA - see `mobile_app/MOBILE_ICON_INSTALL_GUIDE.md`
+
+> **Mobile App**: You can now install this as a Progressive Web App (PWA) on your phone with a custom icon. The icon issue (gray square) has been fixed for Android devices.
 
 **Verification**:
 - [ ] WiFi network visible

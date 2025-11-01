@@ -35,10 +35,14 @@
 #define MAX_PENDING_REQUESTS       16      // Max requests in flight (pipelining)
 #define VAR_READ_CYCLE_MS           100     // How often to cycle through all variables
 
-// Legacy variable IDs (kept for backward compatibility)
-#define VAR_ID_TPS_VALUE           1272048601  // TPSValue variable ID
-#define VAR_ID_RPM_VALUE           1699696209  // RPMValue variable ID
-#define VAR_ID_AFR_VALUE           -1093429509 // AFRValue (O2 sensor) variable ID
+// EPIC Variable IDs are now defined in epic_variables.h
+// This file contains all 845 output variables from EPIC ECU
+// Common variables can be accessed via:
+//   VAR_ID_TPSVALUE, VAR_ID_RPMVALUE, VAR_ID_AFRVALUE, VAR_ID_MAPVALUE, etc.
+// Legacy aliases for backward compatibility:
+#define VAR_ID_TPS_VALUE           VAR_ID_TPSVALUE
+#define VAR_ID_RPM_VALUE           VAR_ID_RPMVALUE
+#define VAR_ID_AFR_VALUE           VAR_ID_AFRVALUE
 
 // Shift light configuration
 #define SHIFT_LIGHT_RPM_THRESHOLD  4000        // RPM threshold for shift light activation

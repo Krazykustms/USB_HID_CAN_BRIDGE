@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>myepicEFI Test</title>
+    <style>
+        body { background: #1a1a1a; color: #fff; font-family: Arial; padding: 20px; }
+        .gauge { background: #2a2a2a; padding: 20px; margin: 10px; border-radius: 8px; display: inline-block; min-width: 150px; }
+        .gauge-value { font-size: 48px; color: #4CAF50; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>myepicEFI Test Dashboard</h1>
+    <div class="gauge">
+        <div>RPM</div>
+        <div class="gauge-value" id="rpm-value">0</div>
+    </div>
+    <div class="gauge">
+        <div>TPS</div>
+        <div class="gauge-value" id="tps-value">0</div>
+    </div>
+    <div class="gauge">
+        <div>AFR</div>
+        <div class="gauge-value" id="afr-value">0.0</div>
+    </div>
+    <div style="margin-top: 20px; color: #B0B0B0;" id="status">Connecting...</div>
+    
+    <script>
+        const API_BASE = 'http://localhost:8080';
+        
+        async function fetchData() {
+            try {
+                const response = await fetch(`${API_BASE}/data`);
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                const data = await response.json();
+                console.log('Data received:', data);
+                
+                document.getElementById('rpm-value').textContent = data.rpm || 0;
+                document.getElementById('tps-value').textContent = (data.tps || 0).toFixed(1) + '%';
+                document.getElementById('afr-value').textContent = (data.afr || 0).toFixed(2);
+                document.getElementById('status').textContent = `Connected - Last update: ${new Date().toLocaleTimeString()}`;
+                document.getElementById('status').style.color = '#4CAF50';
+                return data;
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('status').textContent = 'Error: ' + error.message;
+                document.getElementById('status').style.color = '#F44336';
+                return null;
+            }
+        }
+        
+        // Start fetching immediately
+        fetchData();
+        setInterval(fetchData, 500);
+    </script>
+</body>
+</html>
+

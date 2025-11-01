@@ -1,0 +1,65 @@
+========================================
+myepicEFI Mobile Access Instructions
+========================================
+
+YOUR COMPUTER IP ADDRESS: 192.168.1.114
+
+========================================
+STEP 1: Make sure simulator is running
+========================================
+On your computer, verify the simulator is running:
+  python mobile_app/python/api_simulator.py
+
+You should see:
+  "Server running on http://localhost:8080"
+
+========================================
+STEP 2: Connect mobile to same WiFi
+========================================
+- Connect your phone/tablet to the SAME WiFi network
+- The network your computer is connected to
+
+========================================
+STEP 3: Open browser on mobile device
+========================================
+Open Chrome, Safari, or Edge on your mobile device.
+
+Enter this URL in the address bar:
+
+    http://192.168.1.114:8080
+
+========================================
+STEP 4: Test the app!
+========================================
+You should see:
+  ✓ myepicEFI dashboard
+  ✓ RPM, TPS, AFR gauges updating
+  ✓ Shift light indicator
+  ✓ System status cards
+
+========================================
+TROUBLESHOOTING
+========================================
+
+If you can't connect:
+1. Verify both devices are on same WiFi
+2. Check Windows Firewall allows port 8080
+3. Make sure simulator is running on computer
+4. Try: http://192.168.1.114:8080/data to test API
+
+If gauges show zeros:
+1. Pull down to refresh the page
+2. Check browser console for errors
+
+========================================
+INSTALL AS APP (PWA)
+========================================
+
+iOS (Safari):
+  Share → Add to Home Screen → Name "myepicEFI"
+
+Android (Chrome):
+  Menu (3 dots) → Add to Home Screen → Install
+
+========================================
+
