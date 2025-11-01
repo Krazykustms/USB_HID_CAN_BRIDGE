@@ -506,7 +506,7 @@ void setup() {
   }
 
   // Print variable reading info
-  Serial.println("keyboard_basic1 initialized");
+  Serial.println("EPIC CAN Logger initialized");
   Serial.printf("Logging %d variables from ECU %d:\n", EPIC_VAR_COUNT, ECU_ID);
   for (uint8_t i = 0; i < EPIC_VAR_COUNT; i++) {
     Serial.printf("  - %s (ID %d)\n", EPIC_VARIABLES[i].name, EPIC_VARIABLES[i].var_id);
@@ -684,5 +684,4 @@ void loop() {
     }
   }
 }
-
 
