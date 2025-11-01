@@ -1,5 +1,6 @@
 // SD Card Logger for ESP32-S3
 // Efficient logging system with ring buffer for high-speed CAN variable logging
+// Professional-grade: Sequence numbers, CRC checksums, data integrity validation
 
 #ifndef SD_LOGGER_H
 #define SD_LOGGER_H
@@ -21,6 +22,10 @@
 #define LOG_WRITE_THRESHOLD 2048    // Write to SD when buffer >= this (bytes)
 #define LOG_FLUSH_INTERVAL  1000    // Force flush every N ms
 
+// Professional-grade logging: Sequence numbers and checksums
+#define LOG_ENABLE_SEQUENCE_NUMBERS  1  // Enable sequence numbers for data integrity
+#define LOG_ENABLE_CHECKSUMS         1  // Enable CRC16 checksums for corruption detection
+
 // Status codes
 #define SD_LOG_STATUS_OFF       0
 #define SD_LOG_STATUS_READY     1
@@ -35,6 +40,10 @@ bool sdLoggerWriteEntry(uint32_t timestamp_ms, uint32_t var_id, float value);
 bool sdLoggerWriteHeader(const char** var_names, uint8_t var_count);
 uint8_t sdLoggerGetStatus();
 void sdLoggerTask(); // Call this periodically in loop()
+
+// Professional-grade: Sequence number and checksum functions
+uint32_t sdLoggerGetSequenceNumber(); // Get current sequence number
+bool sdLoggerValidateLastEntry(); // Validate last written entry (checksum check)
 
 #endif // SD_LOGGER_H
 

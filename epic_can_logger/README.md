@@ -1,5 +1,11 @@
 # EPIC CAN Logger
 
+> **Note**: This project provides two versions:
+> - **Standard Version**: `epic_can_logger.ino` (EPIC protocol only)
+> - **ISO-Compliant Version**: `epic_can_logger_iso.ino` (EPIC + ISO 14229/15765)
+> 
+> See [VERSIONS.md](VERSIONS.md) for details on which version to use.
+
 ESP32-S3-USB-OTG based system for logging EPIC ECU variables via CAN bus with USB HID keyboard bridge functionality.
 
 ## Features
@@ -76,13 +82,34 @@ Edit `epic_can_logger.ino`:
 #define MAX_PENDING_REQUESTS       16      // Max requests in flight
 ```
 
+## Quick Start
+
+See `QUICK_START.md` for a 5-minute setup guide.
+
 ## Documentation
 
+### Getting Started
+- `QUICK_START.md` - Fast setup guide (5 minutes)
+- `DEPENDENCIES.md` - Library installation requirements
+- `PROJECT_STRUCTURE.md` - File organization and code layout
+
+### Hardware
 - `ASSEMBLY_BLUEPRINT.md` - Complete hardware assembly guide
+- `STEP_BY_STEP_ASSEMBLY.md` - Detailed assembly instructions
 - `PIN_DIAGRAM.md` - Visual pin assignment reference
 - `PIN_ASSIGNMENT_AUDIT.md` - Pin conflict analysis
+- `PRE_ASSEMBLY_CHECKLIST.md` - Safety checklist
+
+### Usage & Configuration
 - `EPIC_LOGGING_GUIDE.md` - EPIC variable logging setup
+- `DBC_INTEGRATION.md` - rusEFI DBC parsing documentation
+- `WIFI_SETUP.md` - WiFi access point configuration
+- `DEBUG_GUIDE.md` - Debug system usage
+
+### Troubleshooting
+- `TROUBLESHOOTING.md` - Common issues and solutions
 - `ERRORS_FIXED.md` - Error fixes and boot test results
+- `CODE_REVIEW.md` - Code analysis findings
 
 ## Project Structure
 

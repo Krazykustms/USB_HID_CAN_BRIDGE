@@ -1,48 +1,139 @@
-# Active Context: USB_HID_CAN_BRIDGE
+# Active Context: USB_HID_CAN_BRIDGE / EPIC CAN Logger
 
 ## Current Work Focus
-Project is in stable operational state with comprehensive user-facing documentation completed. The firmware is functional and handles USB keyboard to CAN bus bridging. Recent focus has been on creating professional documentation to help users build and deploy the system.
+Project has reached professional-grade status with dual-version support. Recent focus has been on implementing ISO 14229/15765 compliance (Phase 3) and separating versions. The system now provides both standard EPIC-only version and ISO-compliant version for diagnostic tool compatibility.
 
 ## Recent Changes
-- Created comprehensive README.md for GitHub with full installation guide
-- Added "Parts Needed" section with direct Amazon purchase links for all components
-- Added "Hardware Setup Guide" with 9 step-by-step assembly photos from `pics/` directory
-- Documented buck converter preparation (trace cutting, voltage adjustment)
-- Documented CAN transceiver installation with visual guides
-- Documented USB OTG bridge soldering
-- README.md includes markdown tables, embedded images, and professional formatting
-- No firmware code changes - focus on documentation and user experience
+
+### Phase 3: ISO 14229/15765 Compliance (COMPLETED)
+- **ISO 15765 Transport Layer**: Single-frame and multi-frame message handling
+- **ISO 14229 UDS Services**: DiagnosticSessionControl, ECUReset, ReadDataByIdentifier, TesterPresent
+- **Dual Protocol Support**: EPIC + ISO working simultaneously
+- **Variable Mapping**: EPIC variables mapped to UDS DIDs (0xF190-TPS, 0xF191-RPM, 0xF192-AFR)
+- **Separate Versions**: Created `epic_can_logger_iso.ino` separate from standard version
+- **Documentation**: ISO_IMPLEMENTATION.md and VERSIONS.md created
+
+### Phase 2: Professional Usability (COMPLETED)
+- **Runtime Configuration**: EEPROM-based storage via ESP32 Preferences
+- **Web Configuration Interface**: GET/POST endpoints for config management
+- **Health Metrics Endpoint**: Comprehensive system health JSON API
+- **Configuration Validation**: Range checks and error handling
+- **Applied Throughout**: Runtime config used for ECU ID, CAN speed, request interval, shift light RPM, WiFi
+
+### Phase 1: Professional Reliability (COMPLETED)
+- **Sequence Numbers**: Incremental sequence for each log entry
+- **CRC16 Checksums**: Data integrity verification using CRC16-CCITT
+- **Graceful Degradation**: System continues operation if SD card fails
+- **Progressive Error Recovery**: Multi-stage CAN error handling (reset → aggressive reset → restart)
+- **System State Machine**: Tracks INIT, NORMAL, DEGRADED, CRITICAL, FAILURE states
+
+### Previous Work (Already Completed)
+- **SD Card Logging**: Ring buffer, file rotation, CSV format
+- **rusEFI DBC Parsing**: Full decoding of CAN broadcasts (IDs 512-522)
+- **Web Interface**: Real-time dashboard, data API
+- **GPIO Buttons**: 8 buttons with debouncing and long-press detection
+- **Shift Light**: RPM-based activation on GPIO 14
+- **Performance Optimization**: Time budgets, priority scheduling, non-blocking operations
 
 ## Next Steps
-- Monitor system operation for stability in field deployment
-- Gather user feedback on documentation clarity and completeness
-- Consider adding configuration options (CAN address, baud rate) if needed
-- Potential enhancement: Add support for keyboard LED feedback
-- Consider adding EEPROM storage for persistent configuration
-- Evaluate need for additional error diagnostics
-- Possible: Create video assembly guide to complement photo documentation
+- **Testing**: Field testing of ISO version with diagnostic tools (CANoe, Vector)
+- **Additional UDS Services**: Optional services (WriteDataByIdentifier, SecurityAccess, ReadDTCInformation)
+- **Extended Addressing**: ISO extended addressing support (if needed)
+- **Performance Monitoring**: Real-world performance validation
+- **Documentation**: User guides for ISO version usage
 
 ## Active Decisions and Considerations
-- **HID Locale**: Currently set to `HID_LOCAL_Japan_Katakana` - consider if this is optimal for target keyboards
-- **Error Threshold**: 30 errors trigger auto-restart - this value may need tuning based on real-world usage
-- **LED Feedback**: Simple on/off states work but could be enhanced with blink patterns for different conditions
-- **Queue Sizes**: RX/TX queues set to 500 - adequate for current use but may need adjustment for high-throughput scenarios
+
+### Version Separation
+- **Decision**: Two separate .ino files (standard and ISO)
+- **Rationale**: Users can choose based on needs; ISO adds ~70KB flash, 20KB RAM
+- **Maintenance**: Shared code in .h/.cpp files, versions differ only in main .ino
+
+### ISO Implementation
+- **Decision**: Physical addressing only (0x7DF functional, 0x7E8+ECU_ID physical)
+- **Rationale**: Simpler than extended addressing, covers most use cases
+- **Future**: Extended addressing can be added if needed
+
+### Configuration Management
+- **Decision**: ESP32 Preferences (EEPROM-based) for runtime config
+- **Rationale**: Built-in, reliable, no external EEPROM needed
+- **Validation**: All values validated before saving to prevent corruption
+
+### Data Integrity
+- **Decision**: Sequence numbers + CRC16 checksums for SD logs
+- **Rationale**: Detects missing entries (sequence gaps) and corruption (CRC mismatch)
+- **Performance**: Minimal overhead (~10-15 bytes per entry)
+
+### Error Recovery Strategy
+- **Decision**: Progressive recovery (reset CAN → aggressive reset → full restart)
+- **Rationale**: Avoids unnecessary restarts while maintaining reliability
+- **Thresholds**: 10 errors → soft reset, 20 errors → aggressive reset, 30 errors → restart
 
 ## Important Patterns and Preferences
-- **Error Recovery Over Graceful Degradation**: System prefers full restart over attempting to continue in degraded state
-- **Visual Feedback First**: LED status changes happen before operations (user sees intent, then result)
-- **Retry Logic**: 5 retries with 13ms delay is standard pattern for CAN operations
-- **Serial Debugging**: Comprehensive logging available but diagnostic details commented out to reduce noise
-- **Modifier Key Encoding**: Extends keycodes to 16-bit by adding `modifier * 0xFF` to base keycode
+
+### Priority-Based Scheduling
+- **PRIORITY 1**: CAN RX (critical, no delays)
+- **PRIORITY 2**: CAN variable requests (time-critical)
+- **PRIORITY 3**: ISO/UDS tasks (ISO version only) or USB Host
+- **PRIORITY 4**: USB Host or Web server
+- **PRIORITY 5-6**: SD logger, button processing (time-budgeted)
+
+### Time Budgeting
+- **CAN Processing**: Max 10ms per cycle, 50 messages max
+- **SD Flush**: Max 5ms per cycle
+- **Button Processing**: Max 2ms per cycle
+- **Rationale**: Prevents blocking critical CAN communication
+
+### Non-Blocking Design
+- **All I/O**: SD writes, button scans, Serial prints (debug) non-blocking
+- **Yield Points**: `yield()` calls during retries to allow other tasks
+- **Ring Buffers**: SD logger uses ring buffer to decouple writes from CAN timing
+
+### Debug System
+- **Compile-Time Control**: `DEBUG_ENABLED` flag disables all debug at compile time
+- **Category-Specific**: Can enable/disable specific debug categories
+- **Zero Overhead**: When disabled, macros expand to empty (compiler removes them)
+- **Production Ready**: System optimized when debug disabled
 
 ## Learnings and Project Insights
-- ESP32-S3-USB-OTG board has onboard WS2812 LED on GPIO 48 - perfect for status indication
-- USB HID reports follow standard 8-byte format: `[modifier][reserved][key1][key2][key3][key4][key5][key6]`
-- CAN bus stability is critical - even brief issues can accumulate and require restart
-- The 0x711 address suggests integration with a specific ECU/control system expecting button box input
-- Japanese Katakana HID locale setting hints at potential Japanese market target or specific keyboard compatibility requirement
-- Buck converter trace cutting required for voltage adjustment - critical for proper 5V output
-- Visual documentation (photos) significantly improves user assembly experience
-- Direct purchase links reduce friction in parts procurement for builders
-- GitHub markdown with inline images provides professional presentation
 
+### ESP32-S3-USB-OTG Capabilities
+- Onboard WS2812 LED on GPIO 48 - perfect for status indication
+- USB OTG port supports host mode for keyboards
+- ESP32 Preferences (EEPROM) provides reliable persistent storage
+- WiFi AP mode enables web interface without external network
+
+### CAN Protocol Insights
+- EPIC protocol: Proprietary variable reading (0x700+ECU_ID request, 0x720+ECU_ID response)
+- rusEFI broadcasts: Standard DBC format (Motorola byte order, signed/unsigned handling)
+- ISO 15765: Multi-frame messages require flow control and timing management
+- Dual protocol: Can operate both simultaneously with proper message routing
+
+### Performance Characteristics
+- Request pipelining: 16 concurrent requests significantly improves throughput
+- Out-of-order responses: Stored by variable ID, not request order
+- Ring buffer: Reduces SD card wear, improves write performance
+- Time budgeting: Critical for maintaining real-time CAN responsiveness
+
+### Data Integrity
+- Sequence numbers: Enable detection of missing log entries
+- CRC16: Detects corruption but read-back validation is complex (TODO)
+- Graceful degradation: System continues logging to other destinations if SD fails
+
+### ISO Compliance
+- ISO 15765 transport: Handles fragmentation, flow control, timing
+- UDS services: Standard service IDs with proper response formats
+- Variable mapping: EPIC variables accessible via standard UDS ReadDataByIdentifier
+- Diagnostic tools: Compatible with CANoe, Vector, and OEM systems
+
+### Configuration Management
+- Runtime configuration: Enables field configuration without reflashing
+- Validation: Prevents invalid configurations that could break system
+- Checksum: Config integrity verified on load
+- Defaults: System works out-of-box, config is optional enhancement
+
+## Code Organization
+- **Shared Modules**: `sd_logger`, `rusefi_dbc`, `config_manager` used by both versions
+- **ISO-Specific**: `iso15765` and `uds` modules only in ISO version
+- **Main Files**: `epic_can_logger.ino` (standard), `epic_can_logger_iso.ino` (ISO)
+- **Documentation**: Comprehensive guides for both versions in VERSIONS.md

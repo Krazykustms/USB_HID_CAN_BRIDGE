@@ -11,6 +11,19 @@
 #include "sd_logger.h"
 #include "rusefi_dbc.h"
 #include "config_manager.h"
+#include "iso15765.h"
+#include "uds.h"
+
+// ============================================
+// ISO 14229/15765 COMPLIANT VERSION
+// ============================================
+// This version includes ISO 15765 (DoCAN) transport layer
+// and ISO 14229 (UDS) service layer for compatibility
+// with standard automotive diagnostic tools.
+//
+// For the original version without ISO support,
+// use: epic_can_logger.ino
+// ============================================
 
 // ------------------------------
 // Debug Configuration
@@ -786,6 +799,14 @@ void setup() {
     }
   }
 
+  // Initialize ISO 15765 transport layer and UDS services
+  if (iso15765_init(runtimeECU_ID)) {
+    DEBUG_PRINT("ISO 15765 transport layer initialized (ECU ID: %d)\n", runtimeECU_ID);
+  }
+  if (uds_init()) {
+    DEBUG_PRINT("UDS service layer initialized\n");
+  }
+
   // Initialize USB Host
   usbHost.begin();
   deviceGone = 1;  // Until we know a device is present
@@ -921,6 +942,34 @@ static void handleCanRx() {
     
     if (ESP32Can.readFrame(rx, 0)) {
       messagesProcessed++;
+      
+      // ISO 15765/UDS message routing (dual protocol support)
+      // Check for ISO 15765 physical request (functional addressing)
+      if (rx.identifier == ISO_15765_PHYSICAL_REQUEST_BASE || 
+          rx.identifier == (ISO_15765_PHYSICAL_REQUEST_BASE + runtimeECU_ID)) {
+        // Process ISO 15765 message
+        iso15765_process_rx(&rx);
+        
+        // Check if ISO message is complete
+        uint8_t iso_data[4095];
+        uint16_t iso_length = 0;
+        if (iso15765_receive_complete(iso_data, &iso_length)) {
+          // Process UDS service request
+          uint8_t uds_response[4095];
+          uint16_t uds_response_len = 0;
+          
+          if (uds_process_request(iso_data, iso_length, uds_response, &uds_response_len)) {
+            // Send UDS response via ISO 15765
+            uint32_t response_id = ISO_15765_PHYSICAL_RESPONSE_BASE + iso15765_get_ecu_id();
+            if (uds_response_len <= 7) {
+              iso15765_send_single(uds_response, uds_response_len, response_id);
+            } else {
+              iso15765_send_multi(uds_response, uds_response_len, response_id);
+            }
+          }
+        }
+        // Continue to also check for EPIC/DBC messages below
+      }
       
       // Check if this is a rusEFI broadcast message (DBC format)
       // Verify data length is valid (8 bytes for CAN standard frame)
@@ -1194,13 +1243,17 @@ void loop() {
     }
   }
   
-  // PRIORITY 3: USB Host (non-blocking, quick)
+  // PRIORITY 3: ISO 15765/UDS tasks (non-blocking, quick)
+  iso15765_task();  // Process ISO transport layer
+  uds_task();       // Process UDS session management
+
+  // PRIORITY 4: USB Host (non-blocking, quick)
   usbHost.task();
   
-  // PRIORITY 4: Web server (non-blocking, quick)
+  // PRIORITY 5: Web server (non-blocking, quick)
   server.handleClient();  // Handle web server requests (non-blocking)
 
-  // PRIORITY 5: SD logger (non-blocking, time-limited flush)
+  // PRIORITY 6: SD logger (non-blocking, time-limited flush)
   // Professional-grade: Only attempt if SD is operational (graceful degradation)
   if (systemState != SYSTEM_STATE_FAILURE && sdLoggerGetStatus() == SD_LOG_STATUS_ACTIVE) {
     sdLoggerTask();
@@ -1217,7 +1270,7 @@ void loop() {
     }
   }
   
-  // PRIORITY 6: Button processing (lowest priority, time-budgeted to not block CAN)
+  // PRIORITY 7: Button processing (lowest priority, time-budgeted to not block CAN)
   // Process buttons with time budget to prevent blocking CAN communication
   uint32_t buttonProcessStart = nowMs;
   const uint32_t MAX_BUTTON_PROCESS_TIME_MS = 2;  // Max 2ms for button processing
